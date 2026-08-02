@@ -25,7 +25,11 @@
 
       <nav class="side-nav" aria-label="Command center sections">
         <a class="nav-item active" href="#overview"><span class="nav-dot"></span>Overview</a>
+        <a class="nav-item" href="#alerts"><span class="nav-dot"></span>Alerts</a>
         <a class="nav-item" href="#incidents"><span class="nav-dot"></span>Incidents</a>
+        <a class="nav-item" href="#correlations"><span class="nav-dot"></span>Correlation</a>
+        <a class="nav-item" href="#analytics"><span class="nav-dot"></span>Analytics</a>
+        <a class="nav-item" href="#history"><span class="nav-dot"></span>History</a>
         <a class="nav-item" href="#aegis"><span class="nav-dot"></span>AEGIS ForkGuard</a>
       </nav>
 
@@ -67,29 +71,29 @@
       </header>
 
       <section id="overview" class="summary-cards" aria-label="Incident summary">
-        <article class="card card-primary">
+        <article class="card card-primary risk-card">
           <span class="card-index">01</span>
-          <span class="card-label">Total incidents</span>
-          <span class="card-value" id="summary-total">0</span>
-          <span class="card-caption">Recorded locally</span>
+          <span class="card-label">Live risk score</span>
+          <span class="card-value" id="summary-live-risk">0</span>
+          <span class="card-caption" id="summary-risk-level">Normal · last 15 minutes</span>
         </article>
         <article class="card card-blocked">
           <span class="card-index">02</span>
-          <span class="card-label">Action available</span>
-          <span class="card-value" id="summary-blocked">0</span>
-          <span class="card-caption">Awaiting review</span>
+          <span class="card-label">Security alerts</span>
+          <span class="card-value" id="summary-alerts">0</span>
+          <span class="card-caption">Active in the last 24 hours</span>
         </article>
         <article class="card card-warned">
           <span class="card-index">03</span>
-          <span class="card-label">Warnings</span>
-          <span class="card-value" id="summary-warned">0</span>
-          <span class="card-caption">Behavioral signals</span>
+          <span class="card-label">Correlated sequences</span>
+          <span class="card-value" id="summary-correlations">0</span>
+          <span class="card-caption">Related activity clusters</span>
         </article>
         <article class="card">
           <span class="card-index">04</span>
-          <span class="card-label">Average risk</span>
-          <span class="card-value" id="summary-avg-score">0</span>
-          <span class="card-caption">Out of 100</span>
+          <span class="card-label">Attack history</span>
+          <span class="card-value" id="summary-attack-events">0</span>
+          <span class="card-caption">Medium and high events</span>
         </article>
       </section>
 
@@ -103,6 +107,44 @@
           <span class="strip-label">DECISION LAYER</span>
           <strong>Sentinel scoring + AEGIS ForkGuard</strong>
         </div>
+      </section>
+
+      <section class="insight-grid" aria-label="Live security insights">
+        <article class="insight-panel" id="alerts">
+          <div class="panel-heading compact-heading">
+            <div>
+              <p class="eyebrow">ACTION QUEUE</p>
+              <h2>Security alerts</h2>
+            </div>
+            <span class="panel-count" id="alert-count-chip">0 active</span>
+          </div>
+          <div id="alerts-list" class="alerts-list"></div>
+          <p id="alerts-empty" class="empty-state compact-empty">No active alerts. New medium- and high-risk events will appear here.</p>
+        </article>
+
+        <article class="insight-panel" id="timeline">
+          <div class="panel-heading compact-heading">
+            <div>
+              <p class="eyebrow">INCIDENT TIMELINE</p>
+              <h2>Latest activity</h2>
+            </div>
+            <span class="live-chip"><span></span>Live</span>
+          </div>
+          <div id="timeline-list" class="timeline-list"></div>
+          <p id="timeline-empty" class="empty-state compact-empty">The timeline will populate when GhostShield records an event.</p>
+        </article>
+      </section>
+
+      <section class="correlation-panel" id="correlations">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">EVENT CORRELATION</p>
+            <h2>Related attack sequences</h2>
+          </div>
+          <span class="panel-note">10-minute correlation window</span>
+        </div>
+        <div id="correlation-list" class="correlation-list"></div>
+        <p id="correlation-empty" class="empty-state">No related sequences yet. Repeated activity from the same process, destination, device, or origin will be grouped here.</p>
       </section>
 
       <section class="incident-panel" id="incidents">
@@ -124,6 +166,9 @@
               <option value="usb_hid_device">USB keyboard/mouse</option>
               <option value="usb_network_device">USB network adapter</option>
               <option value="usb_other_device">USB other</option>
+              <option value="usb_badusb_keystroke">BadUSB keystroke</option>
+              <option value="transaction_tampering">Transaction tampering</option>
+              <option value="suspicious_script">Suspicious script</option>
             </select>
           </label>
           <label>
@@ -167,6 +212,43 @@
           </table>
           <p id="empty-state" class="empty-state" hidden>No incidents match the current filters.</p>
         </div>
+      </section>
+
+      <section class="analytics-panel" id="analytics">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">ANALYTICS</p>
+            <h2>Detection intelligence</h2>
+          </div>
+          <span class="panel-note" id="analytics-total">0 events analyzed</span>
+        </div>
+        <div class="analytics-grid">
+          <article class="analytics-card">
+            <h3>Event categories</h3>
+            <div id="analytics-categories" class="metric-list"></div>
+          </article>
+          <article class="analytics-card">
+            <h3>Severity distribution</h3>
+            <div id="analytics-severities" class="metric-list"></div>
+          </article>
+          <article class="analytics-card framework-card">
+            <h3>MITRE ATT&amp;CK + OWASP</h3>
+            <p class="mapping-disclaimer">Potential alignments based on observed behavior—not proof that a technique succeeded.</p>
+            <div id="analytics-mappings" class="metric-list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="history-panel" id="history">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">ATTACK HISTORY</p>
+            <h2>Historical risk activity</h2>
+          </div>
+          <span class="panel-note">Last 14 active days</span>
+        </div>
+        <div id="attack-history-list" class="history-list"></div>
+        <p id="history-empty" class="empty-state">No medium- or high-risk activity has been recorded.</p>
       </section>
     </main>
   </div>
