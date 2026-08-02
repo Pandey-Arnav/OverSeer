@@ -3,7 +3,7 @@
  *
  * Layer 2 of the honeypot gate (see keystroke-honeypot.ts for layer 1):
  * a command that types at human-plausible speed still gets judged for
- * malicious intent before it's allowed to actually execute. Reuses the
+ * malicious intent and contained without execution. Reuses the
  * same OpenAI-compatible credentials as server/ai-explanation.ts
  * (OPENAI_API_KEY/OPENAI_MODEL/OPENAI_BASE_URL) rather than requiring a
  * second API key — deterministic mock by default, live call when
@@ -29,6 +29,11 @@ const MOCK_MALICIOUS_PATTERNS: { pattern: RegExp; label: string }[] = [
   { pattern: /\bchmod\s+777\b/i, label: "removes filesystem permission boundaries" },
   { pattern: /\bbase64\s+-d\b.*\|\s*(ba)?sh\b/i, label: "decodes and executes an obfuscated payload" },
   { pattern: /\bosascript\b.*\b(keystroke|System Events)\b/i, label: "scripts further keyboard/UI automation" },
+  { pattern: /\b(?:powershell|pwsh)(?:\.exe)?\b.*(?:-enc(?:odedcommand)?\b|frombase64string|\biex\b|invoke-expression)/i, label: "uses encoded or in-memory PowerShell execution" },
+  { pattern: /\b(?:set|add)-mppreference\b.*(?:disablerealtimemonitoring|exclusionpath|exclusionprocess)/i, label: "attempts to weaken Microsoft Defender protections" },
+  { pattern: /\b(?:iwr|invoke-webrequest|invoke-restmethod|downloadstring|downloadfile)\b.*(?:\biex\b|invoke-expression|start-process|\.exe\b|\.ps1\b)/i, label: "downloads and executes a remote payload" },
+  { pattern: /\b(?:mimikatz|procdump(?:\.exe)?\s+-ma\s+lsass|reg\s+save\s+hklm\\(?:sam|security|system))\b/i, label: "attempts credential dumping" },
+  { pattern: /\bschtasks(?:\.exe)?\s+\/create\b|\breg(?:\.exe)?\s+add\b.*\\(?:run|runonce)\b/i, label: "creates command persistence" },
 ];
 
 export function buildMockVerdict(commandText: string): CommandVerdict {

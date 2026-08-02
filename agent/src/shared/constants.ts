@@ -70,8 +70,8 @@ export const EVENT_CATEGORIES = {
 // honeypot_malicious_command are included here too, but for a different
 // reason than the first two: there's no *further* remediation to offer —
 // prevention already happened by the time the incident is logged (the
-// extension already froze the transaction client-side; the honeypot
-// never executes a held command until timing + Claude checks clear).
+// extension already froze the transaction client-side; the honeypot is
+// a pure decoy that never executes submitted commands).
 // Including them just makes decideAction() map a high score to "blocked"
 // (meaning "already prevented") rather than "detected_not_blocked" (which
 // would incorrectly imply nothing was done about it). See the Decision
@@ -154,8 +154,9 @@ export const OPENAI_MODEL = process.env["OPENAI_MODEL"] || "gpt-4o-mini";
 
 // Hard, non-negotiable backstop: these never execute in the honeypot
 // regardless of what the timing check or Claude classifier conclude.
-// Cheap defense-in-depth against a classifier false negative, since
-// commands that clear both checks now actually run on the real machine.
+// Cheap defense-in-depth against a classifier false negative. The current
+// honeypot contains every command, but these patterns also force a harmful
+// verdict without depending on an AI response.
 export const CATASTROPHIC_COMMAND_PATTERNS: RegExp[] = [
   // rm -rf (or -fr, -Rf, etc.) targeting root, home, or an unqualified wildcard
   /\brm\s+-[a-z]*[rf][a-z]*[rf][a-z]*\s+(\/|~|\$HOME|\*)(\s|$)/i,
@@ -164,4 +165,7 @@ export const CATASTROPHIC_COMMAND_PATTERNS: RegExp[] = [
   /:\(\)\s*\{\s*:\|\s*:\s*&\s*\}\s*;\s*:/, // classic fork bomb
   /\bdiskutil\s+(erase|zeroDisk|secureErase)/i,
   /\bcurl\b[^|]*\|\s*(sudo\s+)?(ba)?sh\b/i, // curl-pipe-to-shell
+  /\bformat(?:\.com)?\s+[a-z]:/i, // Windows volume format
+  /\b(?:clear|initialize)-disk\b/i,
+  /\bremove-item\b.*\b-recurse\b.*\b-force\b.*(?:[a-z]:\\|\$env:(?:userprofile|systemroot))/i,
 ];

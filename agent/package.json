@@ -10,7 +10,7 @@
     "dev": "node --watch src/index.ts",
     "build:dashboard": "node esbuild.config.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --test src/risk/engine.test.ts src/aegis/client.test.ts src/insights/security-insights.test.ts src/monitors/keystroke-honeypot.test.ts src/monitors/usb-monitor.test.ts src/honeypot/command-classifier.test.ts src/honeypot/arm-watcher.test.ts",
+    "test": "node --test src/risk/engine.test.ts src/aegis/client.test.ts src/insights/security-insights.test.ts src/monitors/keystroke-honeypot.test.ts src/monitors/usb-monitor.test.ts src/monitors/windows-process-monitor.test.ts src/hardware/hid-assessment.test.ts src/honeypot/command-classifier.test.ts src/honeypot/session.test.ts src/honeypot/arm-watcher.test.ts",
     "check": "npm run typecheck && npm test"
   },
   "dependencies": {
