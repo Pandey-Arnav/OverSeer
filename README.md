@@ -24,7 +24,7 @@ GhostShield polls real OS surfaces on a timer:
 - **macOS USB devices** (`system_profiler SPUSBDataType -json`) — every
   attached device, classified by name into storage / HID (keyboard-
   mouse-class) / network-adapter / other.
-- **Windows USB devices** (PowerShell PnP/CIM) — newly attached keyboard/HID
+- **Windows USB devices** (`pnputil` CSV + PowerShell DriveInfo) — newly attached keyboard/HID
   and USB-network devices are logged; newly mounted storage is also sent to
   Microsoft Defender for a custom scan before Sentinel records the clean,
   unavailable, or threat-found result.
@@ -328,9 +328,9 @@ API key — the default mock mode makes zero network calls.
   means a root-owned malicious process's network activity would not be
   observed at all (and even if it were, remediation deliberately refuses
   to touch it — see `isSafeToTerminate`).
-- **USB device classification is name-based**, not the actual USB device
-  class code (`system_profiler` doesn't expose that) — a device with a
-  misleading name could be misclassified.
+- **macOS USB device classification is name-based**, not the actual USB
+  device class code (`system_profiler` doesn't expose that) — a device with a
+  misleading name could be misclassified. Windows uses the PnP device class.
 - **Process path resolution occasionally returns just the binary name**
   instead of a full path (depends on how `ps -o comm=` resolves a given
   process), which means the suspicious-path rule can't evaluate it —

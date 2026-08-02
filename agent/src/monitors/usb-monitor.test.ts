@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseWindowsUsbDevices } from "./usb-monitor.ts";
+import { parsePnputilUsbDevices, parseWindowsUsbDevices } from "./usb-monitor.ts";
 
 test("Windows snapshot preserves removable storage and its Defender scan path", () => {
   const devices = parseWindowsUsbDevices(JSON.stringify([
@@ -76,4 +76,42 @@ test("Windows snapshot ignores non-USB input devices and invalid volume records"
   ]));
 
   assert.deepEqual(devices, []);
+});
+
+test("pnputil CSV recognizes the live Windows keyboard output shape", () => {
+  const csv = [
+    "InstanceId,DeviceDescription,ClassName,ClassGuid,ManufacturerName,Status,ProblemCode,ProblemStatus,DriverName,ExtensionDriverNames",
+    '"HID\\VID_0483&PID_5750&MI_00\\7&FLIPPER&0&0000","HID Keyboard Device","Keyboard","{4d36e96b-e325-11ce-bfc1-08002be10318}","(Standard keyboards)","Started","","","keyboard.inf",""',
+  ].join("\r\n");
+
+  const devices = parsePnputilUsbDevices(csv);
+  assert.equal(devices.length, 1);
+  assert.equal(devices[0]?.category, "usb_hid_device");
+  assert.equal(devices[0]?.key, "pnp:0483:5750");
+});
+
+test("pnputil CSV collapses a composite device's USB and HID interfaces", () => {
+  const csv = [
+    "InstanceId,DeviceDescription,ClassName,ClassGuid,ManufacturerName,Status,ProblemCode,ProblemStatus,DriverName,ExtensionDriverNames",
+    '"USB\\VID_0483&PID_5750\\FLIPPER","USB Input Device","HIDClass","guid","manufacturer","Started","","","input.inf",""',
+    '"HID\\VID_0483&PID_5750&MI_00\\FLIPPER","HID Keyboard Device","Keyboard","guid","manufacturer","Started","","","keyboard.inf",""',
+  ].join("\n");
+
+  const devices = parsePnputilUsbDevices(csv);
+  assert.equal(devices.length, 1);
+  assert.equal(devices[0]?.vendorId, "0483");
+  assert.equal(devices[0]?.productId, "5750");
+});
+
+test("pnputil CSV handles quoted commas and ignores non-USB devices", () => {
+  const csv = [
+    "InstanceId,DeviceDescription,ClassName,ClassGuid,ManufacturerName,Status,ProblemCode,ProblemStatus,DriverName,ExtensionDriverNames",
+    '"USB\\VID_0BDA&PID_8153\\001","USB Ethernet, 2.5GbE","Net","guid","Vendor, Inc.","Started","","","net.inf",""',
+    '"ACPI\\IDEA0102\\1","Standard PS/2 Keyboard","Keyboard","guid","Microsoft","Started","","","keyboard.inf",""',
+  ].join("\n");
+
+  const devices = parsePnputilUsbDevices(csv);
+  assert.equal(devices.length, 1);
+  assert.equal(devices[0]?.name, "USB Ethernet, 2.5GbE");
+  assert.equal(devices[0]?.category, "usb_network_device");
 });
