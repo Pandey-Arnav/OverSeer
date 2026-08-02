@@ -81,8 +81,15 @@ device metadata (process name, path, remote address/port, device name).
 - Real, verified remediation: `SIGTERM` a process (skipped entirely for
   root-owned or known-critical system processes — see
   `isSafeToTerminate`), or `diskutil eject` a USB storage volume
-- Local web dashboard (auto-refreshing) with summary cards, filters
-  (category/severity/decision/search), expandable per-incident detail,
+- Desktop command-center dashboard with a five-second live refresh,
+  incident timeline, current 15-minute risk score, security alert queue,
+  attack history, and category/severity/framework analytics
+- Deterministic event correlation that groups repeated activity from the
+  same process, destination, device, or web origin inside a ten-minute window
+- Potential MITRE ATT&CK and OWASP Top 10:2025 mappings for supported
+  behaviors. These are explicitly labeled as behavioral alignments rather
+  than proof that an attack technique succeeded
+- Incident filters (category/severity/decision/search), expandable details,
   and a guarded clear-history action
 - Optional AI-generated plain-English explanations per incident
   (deterministic mock mode by default, live via any OpenAI-compatible
@@ -154,6 +161,7 @@ project-root/
         usb-monitor.ts             # system_profiler polling, diffing, evaluation
         process-info.ts             # codesign + suspicious-path + isSafeToTerminate
       storage/store.ts              # JSON-file incidents/settings (~/.sentinel/)
+      insights/security-insights.ts # alerts, correlation, mappings, history, analytics
       remediation/actions.ts        # terminateProcess, ejectUsbDevice
       server/{app.ts, ai-explanation.ts}
       aegis/{client.ts, process.ts}  # Jac lifecycle and sanitized API bridge
