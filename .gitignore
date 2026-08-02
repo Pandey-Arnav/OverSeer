@@ -1,4 +1,5 @@
 venv/
+.venv/
 __pycache__/
 *.pyc
 .env
@@ -10,3 +11,5 @@ dist/
 logs/
 agent/public/dashboard.js
 agent/public/dashboard.js.map
+server/.data/
+server/aegis/.jac/

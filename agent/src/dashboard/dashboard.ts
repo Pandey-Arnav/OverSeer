@@ -3,7 +3,7 @@
  * bundled to public/dashboard.js by esbuild since the browser can't run
  * .ts directly. Talks to the same-origin Express API in server/app.ts.
  */
-import type { AIExplanation, Decision, Incident, Settings } from "../shared/types.ts";
+import type { AegisReport, AIExplanation, Decision, Incident, Settings } from "../shared/types.ts";
 
 const REFRESH_INTERVAL_MS = 5000;
 
@@ -18,6 +18,8 @@ const REFRESH_INTERVAL_MS = 5000;
   const protectionToggle = requireEl<HTMLInputElement>("protection-toggle");
   const aiToggle = requireEl<HTMLInputElement>("ai-toggle");
   const clearHistoryBtn = requireEl<HTMLButtonElement>("clear-history");
+  const aegisStatus = requireEl<HTMLElement>("aegis-status");
+  const aegisIndicator = requireEl<HTMLElement>("aegis-indicator");
 
   const filterCategory = requireEl<HTMLSelectElement>("filter-category");
   const filterSeverity = requireEl<HTMLSelectElement>("filter-severity");
@@ -99,6 +101,28 @@ const REFRESH_INTERVAL_MS = 5000;
     return box;
   }
 
+  function renderAegisReport(report: AegisReport): HTMLDivElement {
+    const box = document.createElement("div");
+    box.className = "aegis-box";
+
+    const heading = document.createElement("h4");
+    heading.textContent = `AEGIS ForkGuard · ${report.decision.selectedBranch}`;
+    const summary = document.createElement("p");
+    summary.textContent = report.decision.summary;
+    const confidence = document.createElement("p");
+    confidence.textContent = `Confidence ${Math.round(report.decision.confidence * 100)}% · ${report.decision.status}`;
+    const branchGrid = document.createElement("div");
+    branchGrid.className = "branch-grid";
+    for (const branch of report.branches) {
+      const chip = document.createElement("span");
+      chip.className = `branch-chip${branch.name === report.decision.selectedBranch ? " selected" : ""}`;
+      chip.textContent = `${branch.name} · ${branch.verdict}`;
+      branchGrid.appendChild(chip);
+    }
+    box.append(heading, summary, confidence, branchGrid);
+    return box;
+  }
+
   async function requestExplanation(incident: Incident): Promise<AIExplanation> {
     const response = await fetch(`/api/incidents/${incident.id}/explain`, { method: "POST" });
     if (!response.ok) throw new Error(`server responded ${response.status}`);
@@ -112,6 +136,28 @@ const REFRESH_INTERVAL_MS = 5000;
       throw new Error(body.error || `server responded ${response.status}`);
     }
     return response.json();
+  }
+
+  async function requestAegisReview(incident: Incident): Promise<AegisReport> {
+    const response = await fetch(`/api/incidents/${incident.id}/aegis`, { method: "POST" });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({ error: `server responded ${response.status}` }));
+      throw new Error(body.error || `server responded ${response.status}`);
+    }
+    return response.json();
+  }
+
+  async function refreshAegisHealth(): Promise<void> {
+    try {
+      const response = await fetch("/api/aegis/health");
+      const health = await response.json();
+      const online = response.ok && health.status === "ok";
+      aegisStatus.textContent = online ? "Online · ready" : "Offline · Sentinel active";
+      aegisIndicator.className = `pulse-dot ${online ? "online" : "offline"}`;
+    } catch {
+      aegisStatus.textContent = "Offline · Sentinel active";
+      aegisIndicator.className = "pulse-dot offline";
+    }
   }
 
   function buildDetailRow(incident: Incident): HTMLTableRowElement {
@@ -144,6 +190,18 @@ const REFRESH_INTERVAL_MS = 5000;
 
     td.append(meta, reasonsList);
 
+    if (incident.defenderScanStatus) {
+      const defender = document.createElement("span");
+      defender.className = "defender-note";
+      defender.textContent =
+        incident.defenderScanStatus === "threat_found"
+          ? `Microsoft Defender: ${incident.defenderThreatCount ?? 1} threat(s) detected`
+          : incident.defenderScanStatus === "clean"
+            ? "Microsoft Defender: scan completed clean"
+            : "Microsoft Defender: scan unavailable";
+      td.appendChild(defender);
+    }
+
     const actionRow = document.createElement("div");
     actionRow.className = "action-row";
 
@@ -160,7 +218,8 @@ const REFRESH_INTERVAL_MS = 5000;
         try {
           const explanation = await requestExplanation(incident);
           incident.explanation = explanation;
-          td.replaceChild(renderExplanation(explanation), explainBtn);
+          explainBtn.remove();
+          td.appendChild(renderExplanation(explanation));
         } catch (err) {
           explainBtn.disabled = false;
           explainBtn.textContent = "Generate AI explanation";
@@ -168,6 +227,31 @@ const REFRESH_INTERVAL_MS = 5000;
         }
       });
       actionRow.appendChild(explainBtn);
+    }
+
+    if (incident.aegisReport) {
+      td.appendChild(renderAegisReport(incident.aegisReport));
+    } else {
+      const aegisBtn = document.createElement("button");
+      aegisBtn.className = "aegis-button";
+      aegisBtn.textContent = "Run AEGIS analysis";
+      aegisBtn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        aegisBtn.disabled = true;
+        aegisBtn.textContent = "Forking futures…";
+        try {
+          const report = await requestAegisReview(incident);
+          incident.aegisReport = report;
+          aegisBtn.remove();
+          td.appendChild(renderAegisReport(report));
+        } catch (err) {
+          aegisBtn.disabled = false;
+          aegisBtn.textContent = "AEGIS offline · retry";
+          console.error(err);
+          void refreshAegisHealth();
+        }
+      });
+      actionRow.appendChild(aegisBtn);
     }
 
     if (incident.remediation?.available && !incident.remediation.applied) {
@@ -257,6 +341,7 @@ const REFRESH_INTERVAL_MS = 5000;
     settings = await settingsRes.json();
     renderStatus();
     render();
+    void refreshAegisHealth();
   }
 
   [filterCategory, filterSeverity, filterDecision].forEach((el) => el.addEventListener("change", render));

@@ -12,6 +12,8 @@ export const RULE_WEIGHTS = {
   NEW_USB_HID_DEVICE: 25,
   NEW_USB_NETWORK_DEVICE: 35,
   NEW_USB_OTHER_DEVICE: 15,
+  DEFENDER_THREAT_FOUND: 100,
+  DEFENDER_SCAN_UNAVAILABLE: 25,
   // Deliberately alone enough to cross BLOCK (70) — a script-driven
   // rewrite of a recipient/amount/account field after the user has
   // already started editing it is a strong, low-ambiguity signal of
@@ -132,6 +134,7 @@ export const DEFAULT_SETTINGS: Settings = {
 export const MAX_STORED_INCIDENTS = 1000;
 
 export const SERVER_PORT = Number(process.env["SENTINEL_PORT"]) || 4100;
+export const SERVER_HOST = process.env["SENTINEL_HOST"] || "127.0.0.1";
 
 // AI explanation upstream — same OpenAI-compatible contract as before.
 export const OPENAI_BASE_URL = process.env["OPENAI_BASE_URL"] || "https://api.openai.com/v1";

@@ -1,12 +1,12 @@
-# Sentinel Agent — Local Intrusion Detection
+# GhostShield Sentinel Agent — Local Intrusion Detection
 
-A background daemon that runs on your Mac and watches real OS-level
-signals — network connections and USB device attachment — for signs of
-intrusion, scoring them against a transparent local rule engine and
-surfacing a manual "take action" button (terminate process / eject
-device) when something crosses the threshold. Nothing acts
-automatically; every remediation requires your explicit confirmation in
-the local web dashboard.
+A local background daemon that watches real OS-level signals for signs of
+intrusion, scores them with Sentinel's transparent rules, and sends only
+sanitized incident metadata to AEGIS ForkGuard for counterfactual policy
+analysis. On macOS it monitors network connections and USB devices. On
+Windows it watches removable storage, requests a Microsoft Defender custom
+scan, and runs from the notification area at sign-in. Destructive remediation
+still requires explicit confirmation in the command center.
 
 This began as a Chrome-extension prototype that could only see behavior
 inside a browser tab. It was rebuilt from the ground up as a real
@@ -16,13 +16,18 @@ domain, not a refactor.
 
 ## Project overview
 
-Sentinel Agent polls two real OS surfaces on a timer:
-- **Network connections** (`lsof -i -P -n`) — every established
+GhostShield polls real OS surfaces on a timer:
+- **macOS network connections** (`lsof -i -P -n`) — every established
   connection and open listening port, with the owning process's
   identity, code-signing status, and executable path.
-- **USB devices** (`system_profiler SPUSBDataType -json`) — every
+- **macOS USB devices** (`system_profiler SPUSBDataType -json`) — every
   attached device, classified by name into storage / HID (keyboard-
   mouse-class) / network-adapter / other.
+- **Windows removable volumes** (PowerShell/CIM) — newly mounted USB
+  storage is sent to Microsoft Defender for a custom scan before Sentinel
+  records the clean, unavailable, or threat-found result.
+- **AEGIS ForkGuard** (Jac) — evaluates ALLOW, WARN, BLOCK, and CONTAIN
+  futures without replacing Sentinel's observable risk score.
 
 Each newly-observed event is scored by an additive, fully transparent
 rule engine (same philosophy as the original browser prototype: every
@@ -52,10 +57,10 @@ AI-explanation request.
   LaunchDaemons, system file changes)
 - Deep process behavior monitoring beyond "what network connections did
   it make" (e.g. syscall tracing, memory inspection)
-- Anything beyond macOS — `lsof`/`system_profiler`/`codesign`/`diskutil`
-  are all macOS-specific
-- Detecting malware *content* — this has no file scanning or signature
-  database; it's behavior-based, not antivirus
+- Windows network/process inspection; the Windows MVP currently focuses on
+  removable USB storage and delegates content scanning to Microsoft Defender
+- Shipping a second malware signature database; GhostShield orchestrates the
+  platform antivirus rather than pretending AEGIS is itself a signature scanner
 
 **What Sentinel Agent deliberately never collects:** full network
 payloads, file contents, keystrokes, or anything beyond connection/
@@ -63,7 +68,8 @@ device metadata (process name, path, remote address/port, device name).
 
 ## Features
 
-- 8 detection rules across network + USB, additive 0–100 scoring, same
+- Transparent detection rules across network + USB + Defender verdicts,
+  additive 0–100 scoring, with the same
   three-tier decision model as the original prototype: **allow** (0–39)
   → **warn + log** (40–69) → **action available** (70–100)
 - **No automatic actions, ever.** "Blocked" here means "a safe
@@ -81,8 +87,9 @@ device metadata (process name, path, remote address/port, device name).
 - Optional AI-generated plain-English explanations per incident
   (deterministic mock mode by default, live via any OpenAI-compatible
   endpoint)
-- Installable as a macOS LaunchAgent: starts at login, restarts
-  automatically if it crashes
+- AEGIS ForkGuard decision graphs with explicit ALLOW, WARN, BLOCK, and
+  CONTAIN branches for each reviewed incident
+- Installable as a macOS LaunchAgent or Windows scheduled background task
 
 ## Architecture
 
@@ -149,7 +156,10 @@ project-root/
       storage/store.ts              # JSON-file incidents/settings (~/.sentinel/)
       remediation/actions.ts        # terminateProcess, ejectUsbDevice
       server/{app.ts, ai-explanation.ts}
+      aegis/{client.ts, process.ts}  # Jac lifecycle and sanitized API bridge
       dashboard/dashboard.ts        # client-side; bundled by esbuild (runs in a real browser)
+    aegis/                           # AEGIS ForkGuard Jac graph and tests
+    windows/                         # Windows setup, tray, startup, firewall scripts
     public/
       index.html, dashboard.css
       dashboard.js                  # esbuild output, gitignored — run `npm run build:dashboard`
@@ -160,10 +170,33 @@ project-root/
   README.md
 ```
 
-## Installation
+## Installation and access
 
-Requires macOS (uses `lsof`, `system_profiler`, `codesign`, `diskutil` —
-all macOS-only) and Node.js.
+The command center is local-only at **http://127.0.0.1:4100**.
+
+### Windows
+
+Requires Node.js 22+, Python 3.12+, and Microsoft Defender. From the
+repository root:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\agent\windows\Setup-GhostShield.ps1
+powershell.exe -ExecutionPolicy Bypass -File .\agent\windows\Install-GhostShieldStartup.ps1
+```
+
+Run the second command from an Administrator PowerShell window. It creates a
+current-user task, protects the local dashboard/Jac ports with Windows
+Firewall, and starts the shield icon. The Jac environment lives at the short
+`%LOCALAPPDATA%\GhostShield\venv` path so Windows package installation does not
+hit the long-path failure caused by deeply nested repository folders.
+
+Open the command center by double-clicking the shield in the Windows
+notification area or visiting **http://127.0.0.1:4100**.
+
+### macOS
+
+Requires Node.js 22+. Jac must be installed and available on `PATH` for AEGIS;
+Sentinel continues monitoring if Jac is offline.
 
 ```sh
 cd agent
@@ -172,7 +205,7 @@ npm run build:dashboard   # bundles the one client-side file the daemon serves
 npm start                  # runs in the foreground — Ctrl+C to stop
 ```
 
-Open **http://localhost:4100** for the dashboard. The daemon itself
+Open **http://127.0.0.1:4100** for the dashboard. The daemon itself
 (`src/index.ts` and everything it imports) runs directly via Node's
 native TypeScript support — no build step for the daemon, only for the
 dashboard's client-side bundle.
@@ -193,6 +226,9 @@ untouched — delete that directory yourself for a full clean slate).
 | Variable | Default | Purpose |
 |---|---|---|
 | `SENTINEL_PORT` | `4100` | Dashboard/API port |
+| `SENTINEL_HOST` | `127.0.0.1` | Loopback-only dashboard/API bind address |
+| `AEGIS_URL` | `http://127.0.0.1:8012` | Local AEGIS ForkGuard service |
+| `JAC_EXECUTABLE` | `jac` / installed Windows runtime | Optional explicit Jac executable |
 | `OPENAI_API_KEY` | *(unset)* | If unset, AI explanations always use the deterministic mock |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Verify against your account's available models |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-*compatible* endpoint (Groq verified working) |
@@ -272,8 +308,9 @@ API key — the default mock mode makes zero network calls.
 
 ## Known limitations
 
-- **macOS only.** `lsof`, `system_profiler`, `codesign`, `diskutil`, and
-  `launchctl` are all macOS-specific; nothing here runs on Linux/Windows.
+- **Platform coverage differs.** macOS includes network/process and USB
+  metadata monitoring. Windows includes background USB storage discovery,
+  Microsoft Defender scans, and AEGIS, but not yet Windows network telemetry.
 - **Visibility is scoped to the current user's session.** Running
   unprivileged, `lsof -i` only shows the current user's own processes —
   this is a real privacy/permission boundary, not a bug, but it also
@@ -305,9 +342,8 @@ API key — the default mock mode makes zero network calls.
   false-positive review burden over time
 - `pf` firewall integration for actual network-layer blocking (requires
   a privileged helper — a real scope increase, not a quick add)
-- Cross-platform support (Linux via `ss`/`netlink`, Windows via
-  `netstat`/WMI) — would need a platform-abstraction layer around the
-  current macOS-specific shell-outs
+- Linux support (`ss`/`netlink`) and Windows network telemetry
+  (`Get-NetTCPConnection`/ETW)
 
 ## Team split
 

@@ -4,10 +4,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import cors from "cors";
-import { SERVER_PORT } from "../shared/constants.ts";
+import { SERVER_HOST, SERVER_PORT } from "../shared/constants.ts";
 import { clearIncidents, getIncidents, getSettings, updateIncident, updateSettings } from "../storage/store.ts";
 import { generateExplanation } from "./ai-explanation.ts";
 import { ejectUsbDevice, terminateProcess } from "../remediation/actions.ts";
+import { evaluateIncidentWithAegis, getAegisHealth } from "../aegis/client.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -24,6 +25,27 @@ export function createApp() {
 
   app.get("/api/incidents", async (_req, res) => {
     res.json(await getIncidents());
+  });
+
+  app.get("/api/aegis/health", async (_req, res) => {
+    const health = await getAegisHealth();
+    res.status(health.status === "ok" ? 200 : 503).json(health);
+  });
+
+  app.post("/api/incidents/:id/aegis", async (req, res, next) => {
+    try {
+      const incidents = await getIncidents();
+      const incident = incidents.find((item) => item.id === req.params.id);
+      if (!incident) {
+        res.status(404).json({ error: "Incident not found" });
+        return;
+      }
+      const aegisReport = await evaluateIncidentWithAegis(incident);
+      await updateIncident(incident.id, { aegisReport });
+      res.json(aegisReport);
+    } catch (err) {
+      next(err);
+    }
   });
 
   app.post("/api/incidents/clear", async (_req, res) => {
@@ -106,8 +128,8 @@ export function createApp() {
 
 export function startServer() {
   const app = createApp();
-  app.listen(SERVER_PORT, () => {
-    console.log(`Sentinel Agent dashboard: http://localhost:${SERVER_PORT}`);
+  app.listen(SERVER_PORT, SERVER_HOST, () => {
+    console.log(`GhostShield command center: http://${SERVER_HOST}:${SERVER_PORT}`);
   });
   return app;
 }
