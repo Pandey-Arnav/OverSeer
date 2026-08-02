@@ -529,6 +529,15 @@ interface BankIncidentHandoff {
     }
   }
 
+  function hardwareVerdictLabel(incident: Incident): string | null {
+    const verdict = incident.hardwareAssessment?.verdict;
+    if (!verdict) return null;
+    if (verdict === "observing") return "observing";
+    if (verdict === "no_harmful_behavior_observed") return "no harm observed";
+    if (verdict === "suspicious") return "suspicious";
+    return "harmful";
+  }
+
   function buildDetailRow(incident: Incident): HTMLTableRowElement {
     const tr = document.createElement("tr");
     tr.className = "detail-row";
@@ -541,6 +550,7 @@ interface BankIncidentHandoff {
       incident.processName ? `Process: ${incident.processName}` : null,
       incident.processPath ? `Path: ${incident.processPath}` : null,
       incident.honeypotCommand ? `Command: ${incident.honeypotCommand}` : null,
+      incident.vendorId || incident.productId ? `VID/PID: ${incident.vendorId ?? "?"}/${incident.productId ?? "?"}` : null,
     ].filter(Boolean);
     meta.textContent = metaParts.join(" · ") || "No additional process metadata.";
 
@@ -558,7 +568,29 @@ interface BankIncidentHandoff {
       }
     }
 
-    td.append(meta, reasonsList);
+    td.appendChild(meta);
+
+    if (incident.hardwareAssessment) {
+      const assessment = document.createElement("section");
+      assessment.className = `hardware-assessment hardware-${incident.hardwareAssessment.verdict}`;
+      const heading = document.createElement("strong");
+      heading.textContent = `Hardware verdict: ${hardwareVerdictLabel(incident)}`;
+      const explanation = document.createElement("p");
+      explanation.textContent = `${incident.hardwareAssessment.reason} Confidence: ${incident.hardwareAssessment.confidence}.`;
+      assessment.append(heading, explanation);
+      if (incident.hardwareAssessment.evidence.length > 0) {
+        const evidence = document.createElement("ul");
+        for (const item of incident.hardwareAssessment.evidence) {
+          const li = document.createElement("li");
+          li.textContent = item;
+          evidence.appendChild(li);
+        }
+        assessment.appendChild(evidence);
+      }
+      td.appendChild(assessment);
+    }
+
+    td.appendChild(reasonsList);
 
     if (incident.defenderScanStatus) {
       const defender = document.createElement("span");
@@ -693,10 +725,14 @@ interface BankIncidentHandoff {
     for (const incident of filtered) {
       const tr = document.createElement("tr");
       tr.className = "incident-row";
+      const hardwareLabel = hardwareVerdictLabel(incident);
+      const hardwareBadge = incident.hardwareAssessment && hardwareLabel
+        ? `<span class="hardware-verdict hardware-${incident.hardwareAssessment.verdict}">${hardwareLabel}</span>`
+        : "";
       tr.innerHTML = `
         <td>${formatTime(incident.timestamp)}</td>
         <td>${incident.category.replace(/_/g, " ")}</td>
-        <td>${incident.summary} <span style="color:#9ca3af;">(${hostnameOrName(incident)})</span></td>
+        <td>${incident.summary} <span style="color:#9ca3af;">(${hostnameOrName(incident)})</span> ${hardwareBadge}</td>
         <td><span class="severity-dot severity-${incident.severity}"></span>${incident.score}</td>
         <td><span class="badge badge-${incident.decision}">${decisionLabel(incident.decision)}</span></td>
         <td>${expandedId === incident.id ? "▾" : "▸"}</td>

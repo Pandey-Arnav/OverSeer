@@ -17,8 +17,9 @@ A local background daemon that watches real OS-level signals for signs of
 intrusion, scores them with Sentinel's transparent rules, and sends only
 sanitized incident metadata to AEGIS ForkGuard for counterfactual policy
 analysis. On macOS it monitors network connections and USB devices. On
-Windows it watches removable storage, requests a Microsoft Defender custom
-scan, and runs from the notification area at sign-in. Destructive remediation
+Windows it watches removable storage plus newly attached USB HID/network
+devices, requests a Microsoft Defender custom scan for storage, and runs from
+the notification area at sign-in. Destructive remediation
 still requires explicit confirmation in the command center.
 
 This began as a Chrome-extension prototype that could only see behavior
@@ -36,9 +37,10 @@ GhostShield polls real OS surfaces on a timer:
 - **macOS USB devices** (`system_profiler SPUSBDataType -json`) — every
   attached device, classified by name into storage / HID (keyboard-
   mouse-class) / network-adapter / other.
-- **Windows removable volumes** (PowerShell/CIM) — newly mounted USB
-  storage is sent to Microsoft Defender for a custom scan before Sentinel
-  records the clean, unavailable, or threat-found result.
+- **Windows USB devices** (`pnputil` CSV + PowerShell DriveInfo) — newly attached keyboard/HID
+  and USB-network devices are logged; newly mounted storage is also sent to
+  Microsoft Defender for a custom scan before Sentinel records the clean,
+  unavailable, or threat-found result.
 - **AEGIS ForkGuard** (Jac) — evaluates ALLOW, WARN, BLOCK, and CONTAIN
   futures without replacing Sentinel's observable risk score.
 
@@ -71,13 +73,14 @@ AI-explanation request.
 - Deep process behavior monitoring beyond "what network connections did
   it make" (e.g. syscall tracing, memory inspection)
 - Windows network/process inspection; the Windows MVP currently focuses on
-  removable USB storage and delegates content scanning to Microsoft Defender
+  USB device arrival and delegates removable-storage content scanning to Microsoft Defender
 - Shipping a second malware signature database; GhostShield orchestrates the
   platform antivirus rather than pretending AEGIS is itself a signature scanner
 
-**What Sentinel Agent deliberately never collects:** full network
-payloads, file contents, keystrokes, or anything beyond connection/
-device metadata (process name, path, remote address/port, device name).
+**What Sentinel Agent deliberately never collects:** full network payloads,
+file contents, clipboard data, or global keystrokes. The armed decoy measures
+only timing inside its own focused input and retains command text only when it
+is evidence for a suspicious or harmful incident.
 
 ## Features
 
@@ -99,6 +102,10 @@ device metadata (process name, path, remote address/port, device name).
   attack history, and category/severity/framework analytics
 - Deterministic event correlation that groups repeated activity from the
   same process, destination, device, or web origin inside a ten-minute window
+- Behavior-based USB HID assessment with four honest states: observing,
+  no harmful behavior observed, suspicious automation, and harmful command
+  intent. The Windows watcher correlates new HID hardware with scripted input
+  timing and newly spawned shell/script-host processes.
 - Potential MITRE ATT&CK and OWASP Top 10:2025 mappings for supported
   behaviors. These are explicitly labeled as behavioral alignments rather
   than proof that an attack technique succeeded
@@ -318,29 +325,32 @@ unit-tested in isolation:
 
 ## Privacy guarantees
 
-Sentinel Agent never collects: file contents, keystrokes, clipboard
-data, or full network payloads. What it stores locally
-(`~/.sentinel/incidents.json`, never transmitted anywhere): process
-name/path, remote address/port or device name, the computed score and
-which named rules fired. The only thing that ever leaves the machine is
-that same incident metadata, sent to your configured AI endpoint **only
-when you click "Generate AI explanation,"** and only if you've set an
-API key — the default mock mode makes zero network calls.
+Sentinel Agent never collects global keystrokes, file contents, clipboard
+data, or full network payloads. The armed decoy terminal measures timing only
+inside its own focused input and stores command text only when it becomes
+security evidence for a suspicious/harmful incident. No decoy command is ever
+executed. Locally stored incident data includes process name/path, remote
+address/port or device identity, the computed score, and the named evidence
+rules that fired. If an API key is configured, a command entered into the
+decoy may be sent to that configured AI endpoint for intent classification;
+incident metadata is also sent when you click **Generate AI explanation**.
+The default mock mode makes zero network calls.
 
 ## Known limitations
 
 - **Platform coverage differs.** macOS includes network/process and USB
-  metadata monitoring. Windows includes background USB storage discovery,
-  Microsoft Defender scans, and AEGIS, but not yet Windows network telemetry.
+  metadata monitoring. Windows includes background USB storage and HID/network
+  device discovery, Microsoft Defender storage scans, and AEGIS, but not yet
+  Windows network telemetry.
 - **Visibility is scoped to the current user's session.** Running
   unprivileged, `lsof -i` only shows the current user's own processes —
   this is a real privacy/permission boundary, not a bug, but it also
   means a root-owned malicious process's network activity would not be
   observed at all (and even if it were, remediation deliberately refuses
   to touch it — see `isSafeToTerminate`).
-- **USB device classification is name-based**, not the actual USB device
-  class code (`system_profiler` doesn't expose that) — a device with a
-  misleading name could be misclassified.
+- **macOS USB device classification is name-based**, not the actual USB
+  device class code (`system_profiler` doesn't expose that) — a device with a
+  misleading name could be misclassified. Windows uses the PnP device class.
 - **Process path resolution occasionally returns just the binary name**
   instead of a full path (depends on how `ps -o comm=` resolves a given
   process), which means the suspicious-path rule can't evaluate it —

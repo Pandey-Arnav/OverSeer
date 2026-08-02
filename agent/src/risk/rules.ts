@@ -167,9 +167,8 @@ function suspiciousScript(event: SentinelEvent): RuleFinding | null {
 }
 
 // BadUSB honeypot, layer 2: a command that passed the keystroke-timing
-// check (looked human enough to type) still gets classified for intent
-// before it's allowed to actually execute (see
-// honeypot/command-classifier.ts). scriptFindings here carries the
+// check (looked human enough to type) still gets classified for intent.
+// The decoy terminal never executes commands. scriptFindings here carries the
 // classifier's stated reasons, not a browser extension's static
 // analysis — same generic "content-analysis flagged X" shape as
 // suspiciousScript above, different source.

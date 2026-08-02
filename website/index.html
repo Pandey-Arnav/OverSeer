@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Overseer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z' fill='%23FF4B2B'/%3E%3Cellipse cx='12' cy='12' rx='1.7' ry='4.8' fill='%230A0D12'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter+Tight:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0A0D12;
+    --panel: #12161D;
+    --panel-2: #171C24;
+    --line: #262C36;
+    --text: #E7EBF1;
+    --muted: #7C8798;
+    --alert: #FF4B2B;
+    --alert-dim: #4a2318;
+    --safe: #33D6A6;
+    --safe-dim: #163430;
+    --warn: #FFB020;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;}
+  body{-webkit-font-smoothing:antialiased;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .display{font-family:'Inter Tight',sans-serif;}
+
+  a{color:inherit;}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 32px;}
+
+  /* NAV */
+  nav{position:sticky;top:0;z-index:50;background:rgba(10,13,18,0.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);}
+  nav .wrap{display:flex;align-items:center;justify-content:space-between;height:64px;}
+  .brand{display:flex;align-items:center;gap:10px;font-family:'Bebas Neue',sans-serif;font-weight:700;font-size:26px;letter-spacing:0.04em;-webkit-text-stroke:0.6px currentColor;}
+  .wordmark{font-family:'Bebas Neue',sans-serif;font-weight:700;letter-spacing:0.04em;-webkit-text-stroke:0.6px currentColor;}
+  .brand .eye-icon{filter:drop-shadow(0 0 6px rgba(255,75,43,0.55));flex-shrink:0;}
+  .foot-left .eye-icon{filter:drop-shadow(0 0 8px rgba(255,75,43,0.5));}
+  .foot-left .brand-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+  .navlinks{display:flex;gap:28px;font-size:13px;color:var(--muted);}
+  .navlinks a:hover{color:var(--text);}
+
+  /* HERO */
+  .hero{padding:72px 0 40px;border-bottom:1px solid var(--line);}
+  .hero-grid{display:grid;grid-template-columns:1.05fr 1fr;gap:56px;align-items:center;}
+  @media(max-width:900px){.hero-grid{grid-template-columns:1fr;}}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:11.5px;letter-spacing:0.08em;color:var(--warn);border:1px solid #3a2f14;background:#1a150a;padding:5px 10px;border-radius:4px;text-transform:uppercase;}
+  h1.display{font-size:44px;line-height:1.08;margin:20px 0 18px;font-weight:800;letter-spacing:-0.01em;}
+  h1.display .hl{color:var(--alert);}
+  .sub{font-size:16px;line-height:1.6;color:var(--muted);max-width:480px;margin-bottom:30px;}
+  .cta-row{display:flex;gap:12px;flex-wrap:wrap;}
+  .btn{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:500;padding:12px 18px;border-radius:6px;border:1px solid var(--line);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:8px;transition:transform .15s ease, border-color .15s ease;}
+  .btn:hover{transform:translateY(-1px);}
+  .btn-primary{background:var(--alert);border-color:var(--alert);color:#0A0D12;font-weight:600;}
+  .btn-primary:hover{background:#ff5f43;}
+  .btn-ghost{color:var(--text);}
+  .btn-ghost:hover{border-color:#3a4150;}
+
+  /* GRAPH PANEL */
+  .graph-panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px 20px 20px;position:relative;overflow:hidden;}
+  .graph-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+  .graph-title{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:0.05em;}
+  .graph-status{font-family:'JetBrains Mono',monospace;font-size:11px;padding:3px 8px;border-radius:4px;background:var(--safe-dim);color:var(--safe);}
+  svg#chain{width:100%;height:auto;display:block;}
+  .node-label{font-family:'JetBrains Mono',monospace;font-size:11px;fill:var(--muted);}
+  .node-label.active{fill:var(--text);}
+  .node circle{fill:var(--panel-2);stroke:var(--line);stroke-width:1.5;}
+  .node.lit circle{stroke:var(--warn);}
+  .node.blocked circle{fill:var(--alert-dim);stroke:var(--alert);}
+  .edge{stroke:var(--line);stroke-width:1.5;}
+  .edge.lit{stroke:var(--warn);}
+  .edge.blocked{stroke:var(--alert);}
+  .log-line{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);margin-top:14px;padding-top:14px;border-top:1px dashed var(--line);min-height:18px;}
+  .log-line .ok{color:var(--safe);}
+  .log-line .bad{color:var(--alert);}
+
+  /* SECTION HEADERS */
+  .section{padding:64px 0;border-bottom:1px solid var(--line);}
+  .section-head{max-width:600px;margin-bottom:42px;}
+  .section-eyebrow{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:10px;}
+  .section-title{font-family:'Inter Tight',sans-serif;font-size:28px;font-weight:700;letter-spacing:-0.01em;}
+  .section-sub{color:var(--muted);font-size:15px;margin-top:10px;line-height:1.6;}
+
+  /* BUMPER */
+  .bumper{padding:70px 0;border-bottom:1px solid var(--line);text-align:center;}
+  .bumper .line1{font-family:'Inter Tight',sans-serif;font-size:26px;color:var(--muted);font-weight:600;}
+  .bumper .line2{font-family:'Inter Tight',sans-serif;font-size:26px;color:var(--text);font-weight:800;margin-top:4px;}
+  .bumper .icon{margin:26px auto 22px;width:14px;height:14px;border-radius:50%;background:var(--safe);box-shadow:0 0 22px var(--safe);}
+
+  /* FEATURES */
+  .feat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  @media(max-width:900px){.feat-grid{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:560px){.feat-grid{grid-template-columns:1fr;}}
+  .feat{background:var(--panel);padding:24px 20px;}
+  .feat-icon{width:32px;height:32px;border-radius:7px;background:var(--panel-2);display:flex;align-items:center;justify-content:center;margin-bottom:16px;}
+  .feat h3{font-size:15.5px;margin:0 0 8px;font-weight:600;}
+  .feat p{font-size:13.5px;color:var(--muted);line-height:1.55;margin:0 0 12px;}
+  .feat .hooks{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#59606e;line-height:1.6;}
+  .feat .hooks b{color:#8a93a3;font-weight:500;}
+
+  /* RISK CARD */
+  .risk-wrap{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;}
+  @media(max-width:900px){.risk-wrap{grid-template-columns:1fr;}}
+  .risk-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:22px;}
+  .risk-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;}
+  .risk-score{font-family:'Inter Tight',sans-serif;font-size:40px;font-weight:800;color:var(--alert);line-height:1;}
+  .risk-score span{font-size:15px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-weight:400;}
+  .risk-conf{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);text-align:right;}
+  .risk-conf b{color:var(--text);display:block;font-size:15px;}
+  .risk-row{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--line);font-size:13px;}
+  .risk-row .k{width:110px;flex-shrink:0;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11.5px;padding-top:2px;}
+  .risk-row .v{color:var(--text);line-height:1.5;}
+  .tag{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--panel-2);border:1px solid var(--line);padding:2px 8px;border-radius:4px;color:var(--warn);}
+
+  /* ACTIVITY TIMELINE (what you see when you open the app) */
+  .timeline-head{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);margin-bottom:14px;letter-spacing:0.05em;}
+  .timeline{list-style:none;margin:0;padding:0;}
+  .timeline li{display:flex;gap:16px;padding:16px 0;border-bottom:1px solid var(--line);}
+  .timeline li:last-child{border-bottom:none;}
+  .timeline .when{width:96px;flex-shrink:0;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);padding-top:2px;}
+  .timeline .what p{margin:0;font-size:13.5px;color:var(--text);line-height:1.5;}
+  .timeline .tagpill{font-family:'JetBrains Mono',monospace;font-size:10px;padding:2px 7px;border-radius:4px;margin-top:6px;display:inline-block;}
+  .tagpill.safe{background:var(--safe-dim);color:var(--safe);}
+  .tagpill.warn{background:#2a2110;color:var(--warn);}
+
+  /* FOOTER CTA */
+  footer{padding:56px 0 44px;}
+  .foot-row{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:20px;}
+  .foot-left .display{font-size:22px;font-weight:700;margin-bottom:6px;}
+  .foot-left p{color:var(--muted);font-size:13.5px;margin:0;}
+  .badges{display:flex;gap:8px;flex-wrap:wrap;}
+  .badge{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);border:1px solid var(--line);padding:6px 10px;border-radius:5px;}
+  .badge.free{color:var(--safe);border-color:#1c4a40;background:var(--safe-dim);}
+
+  /* FREE CHIP (hero) */
+  .free-chip{display:inline-flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--safe);margin-top:18px;}
+  .free-chip .dot{width:6px;height:6px;border-radius:50%;background:var(--safe);box-shadow:0 0 8px var(--safe);}
+
+  /* 3-col grid variant (threats / different-section cards) */
+  .feat-grid.cols-3{grid-template-columns:repeat(3,1fr);}
+  @media(max-width:900px){.feat-grid.cols-3{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:560px){.feat-grid.cols-3{grid-template-columns:1fr;}}
+
+  /* PRICING */
+  .pricing-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:44px;text-align:center;max-width:640px;margin:0 auto;}
+  .pricing-price{font-family:'Inter Tight',sans-serif;font-weight:800;font-size:52px;color:var(--safe);letter-spacing:-0.01em;}
+  .pricing-price span{font-size:16px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-weight:400;margin-left:6px;}
+  .pricing-sub{color:var(--muted);font-size:14.5px;margin:10px 0 28px;line-height:1.6;}
+  .pricing-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;text-align:left;}
+  @media(max-width:560px){.pricing-list{grid-template-columns:1fr;}}
+  .pricing-list li{display:flex;gap:10px;font-size:13.5px;color:var(--text);align-items:flex-start;}
+  .pricing-list li .check{color:var(--safe);font-family:'JetBrains Mono',monospace;flex-shrink:0;}
+
+  /* FAQ */
+  .faq-list{max-width:760px;}
+  .faq-item{border-bottom:1px solid var(--line);padding:18px 0;}
+  .faq-item summary{cursor:pointer;font-size:15px;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center;gap:16px;}
+  .faq-item summary::-webkit-details-marker{display:none;}
+  .faq-item summary::after{content:'+';font-family:'JetBrains Mono',monospace;color:var(--muted);font-size:18px;flex-shrink:0;transition:transform .15s ease;}
+  .faq-item[open] summary::after{content:'–';}
+  .faq-item p{color:var(--muted);font-size:13.5px;line-height:1.6;margin:12px 0 0;max-width:640px;}
+
+  /* FOOTER COLUMNS */
+  .foot-top{display:grid;grid-template-columns:1.3fr 1fr 1fr 1fr;gap:32px;padding-bottom:36px;margin-bottom:28px;border-bottom:1px solid var(--line);}
+  @media(max-width:800px){.foot-top{grid-template-columns:1fr 1fr;}}
+  .foot-col h4{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:0.06em;text-transform:uppercase;margin:0 0 14px;}
+  .foot-col a{display:block;font-size:13.5px;color:var(--text);text-decoration:none;margin-bottom:10px;opacity:0.85;}
+  .foot-col a:hover{opacity:1;color:var(--alert);}
+
+  /* REPORT A LINK (community reports feature) */
+  .form-field{margin-bottom:18px;}
+  .form-field label{display:block;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:0.05em;margin-bottom:8px;text-transform:uppercase;}
+  .form-field input, .form-field textarea{width:100%;background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:10px 12px;color:var(--text);font-family:'Inter',sans-serif;font-size:13.5px;}
+  .form-field textarea{resize:none;min-height:64px;}
+  .chip-row{display:flex;gap:8px;flex-wrap:wrap;}
+  .chip{font-family:'JetBrains Mono',monospace;font-size:11.5px;padding:7px 12px;border-radius:6px;border:1px solid var(--line);color:var(--muted);}
+  .chip.active{border-color:var(--alert);color:var(--alert);background:rgba(255,75,43,0.08);}
+  .form-note{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.5;}
+  .report-feed{list-style:none;margin:0;padding:0;}
+  .report-feed li{padding:16px 0;border-bottom:1px solid var(--line);}
+  .report-feed li:last-child{border-bottom:none;}
+  .report-feed .top-row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+  .report-feed .domain{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text);}
+  .report-feed .meta{font-size:12.5px;color:var(--muted);margin-top:4px;line-height:1.5;}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="brand">
+      <svg class="eye-icon" width="26" height="26" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" fill="#FF4B2B"/>
+        <ellipse cx="12" cy="12" rx="1.7" ry="4.8" fill="#0A0D12"/>
+      </svg>
+      OVERSEER
+    </div>
+    <div class="navlinks">
+      <a href="#how">How it works</a>
+      <a href="#threats">What it stops</a>
+      <a href="#open">Open the app</a>
+      <a href="#community">Community reports</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
+    </div>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="eyebrow">● Background Protection For Your Money</span>
+      <h1 class="display">Your bank tab is a<br>moving target.<br><span class="hl">Overseer stands guard.</span></h1>
+      <p class="sub">A quiet background app that checks the links you click against known scams and reports from other users — and warns you before you land on something dangerous.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#open">▸ See what it's blocked</a>
+        <a class="btn btn-ghost" href="#how">How it works</a>
+      </div>
+      <div class="free-chip"><span class="dot"></span>Free to use — no subscription, no paywalled protection</div>
+    </div>
+
+    <div class="graph-panel">
+      <div class="graph-head">
+        <span class="graph-title">// LINK SCAN LOG</span>
+        <span class="graph-status" id="statusPill">ARMED</span>
+      </div>
+      <svg id="chain" viewBox="0 0 460 340" xmlns="http://www.w3.org/2000/svg">
+        <line class="edge" id="e0" x1="230" y1="30" x2="230" y2="80"/>
+        <line class="edge" id="e1" x1="230" y1="110" x2="230" y2="140"/>
+        <line class="edge" id="e2" x1="230" y1="170" x2="230" y2="200"/>
+        <line class="edge" id="e3" x1="230" y1="230" x2="230" y2="260"/>
+        <line class="edge" id="e4" x1="230" y1="290" x2="230" y2="300"/>
+
+        <g class="node" id="n0"><circle cx="230" cy="18" r="14"/></g>
+        <text class="node-label" id="l0" x="253" y="22">Link clicked</text>
+
+        <g class="node" id="n1"><circle cx="230" cy="95" r="14"/></g>
+        <text class="node-label" id="l1" x="253" y="99">Checked against scam list</text>
+
+        <g class="node" id="n2"><circle cx="230" cy="155" r="14"/></g>
+        <text class="node-label" id="l2" x="253" y="159">214 community reports</text>
+
+        <g class="node" id="n3"><circle cx="230" cy="215" r="14"/></g>
+        <text class="node-label" id="l3" x="253" y="219">Phishing pattern match</text>
+
+        <g class="node" id="n4"><circle cx="230" cy="275" r="14"/></g>
+        <text class="node-label" id="l4" x="253" y="279">Warning issued</text>
+
+        <g class="node blocked" id="n5"><circle cx="230" cy="325" r="15"/></g>
+        <text class="node-label" id="l5" x="253" y="329" style="fill:var(--alert);">BLOCKED</text>
+      </svg>
+      <div class="log-line mono" id="logLine">$ awaiting event stream…</div>
+    </div>
+  </div>
+</section>
+
+<section class="bumper">
+  <div class="wrap">
+    <div class="icon"></div>
+    <div class="line1">It's not always watching.</div>
+    <div class="line2">It's always ready.</div>
+  </div>
+</section>
+
+<section class="section" id="how">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-eyebrow">What's actually running</div>
+      <div class="section-title">Four systems, one pipeline</div>
+      <p class="section-sub">Events go in one end as raw signal around your money. A verdict — score, explanation, and an action already taken — comes out the other.</p>
+    </div>
+    <div class="feat-grid">
+      <div class="feat">
+        <div class="feat-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M2 12h4M18 12h4M12 2v4M12 18v4"/></svg>
+        </div>
+        <h3>Background Guard</h3>
+        <p>Checks links as you click them — it isn't a dashboard you have to babysit.</p>
+        <div class="hooks"><b>checks:</b> outbound links, redirects, known scam<br>databases, community-reported links</div>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M6 8.5 12 15.5M18 8.5 12 15.5"/></svg>
+        </div>
+        <h3>Threat Graph</h3>
+        <p>Turns scattered signals into the full story of why a link was flagged.</p>
+        <div class="hooks"><b>example:</b> link clicked -> scam-list match -><br>214 community reports -> blocked</div>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><path d="M13 2 3 14h7l-1 8 11-14h-7z"/></svg>
+        </div>
+        <h3>Rule + AI Risk Engine</h3>
+        <p>Instant rules catch known scam links; AI reasons through anything new and scores the risk.</p>
+        <div class="hooks"><b>rules:</b> known scam domains, cloned-login patterns,<br>redirect chains, high community-report counts</div>
+      </div>
+      <div class="feat">
+        <div class="feat-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5z"/></svg>
+        </div>
+        <h3>Silent Enforcement</h3>
+        <p>Warns you or blocks the link outright — before you'd notice anything happened.</p>
+        <div class="hooks"><b>action:</b> warn -> hold -> block,<br>one tap to report it yourself</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="threats">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-eyebrow">Coverage</div>
+      <div class="section-title">The kinds of links it catches</div>
+      <p class="section-sub">A "dirty link" is any link that leads somewhere designed to take your money or your credentials. Overseer checks every one against known patterns and what other users have already reported.</p>
+    </div>
+    <div class="feat-grid cols-3">
+      <div class="feat">
+        <div class="feat-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M4 8l8 6 8-6"/></svg></div>
+        <h3>Cloned bank &amp; login links</h3>
+        <p>Links to pages that copy a real bank or brokerage login pixel-for-pixel.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg></div>
+        <h3>Fake checkout links</h3>
+        <p>Payment pages that redirect through a lookalike gateway right before you submit.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><path d="M12 3v18M5 8l7-5 7 5M5 16l7 5 7-5"/></svg></div>
+        <h3>Crypto &amp; investment scam links</h3>
+        <p>"Double your money" and fake exchange links shared in DMs and comments.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v6l4 2"/></svg></div>
+        <h3>Malicious redirect chains</h3>
+        <p>Links that bounce through several domains to hide where you'll really land.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M6 18h12"/></svg></div>
+        <h3>Fake giveaway &amp; prize links</h3>
+        <p>"You've won" links designed to harvest card details or account access.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+        <h3>Links reported by the community</h3>
+        <p>Anything another user has flagged as a scam, even before it hits any watchlist.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="open">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-eyebrow">Open the app</div>
+      <div class="section-title">See exactly what it stopped</div>
+      <p class="section-sub">No live feed to babysit. Open Overseer after the fact and get the full story in plain language — plus everything else it quietly handled this week.</p>
+    </div>
+    <div class="risk-wrap">
+      <div class="risk-card">
+        <div class="risk-top">
+          <div class="risk-score">94<span>%</span></div>
+          <div class="risk-conf">CONFIDENCE<b>91%</b></div>
+        </div>
+        <div class="risk-row"><div class="k">PATTERN</div><div class="v"><span class="tag">Cloned Bank Login Link</span></div></div>
+        <div class="risk-row"><div class="k">GRAPH</div><div class="v">Link clicked → Scam-list match → 214 community reports → Blocked</div></div>
+        <div class="risk-row"><div class="k">WHY</div><div class="v">This link led to a page that copied your bank's login exactly, and 214 other users had already reported it as a scam.</div></div>
+        <div class="risk-row"><div class="k">WHAT WE DID</div><div class="v">Blocked the page from loading and warned you before it opened.</div></div>
+      </div>
+      <div>
+        <div class="timeline-head">// RECENT ACTIVITY</div>
+        <ul class="timeline">
+          <li>
+            <div class="when">TODAY<br>9:14 AM</div>
+            <div class="what"><p>Blocked a cloned bank login link before it opened.</p><span class="tagpill safe">BLOCKED</span></div>
+          </li>
+          <li>
+            <div class="when">YESTERDAY</div>
+            <div class="what"><p>Warned you about a "double your crypto" link from a group chat.</p><span class="tagpill safe">BLOCKED</span></div>
+          </li>
+          <li>
+            <div class="when">TUESDAY</div>
+            <div class="what"><p>Stopped a fake checkout link mid-click.</p><span class="tagpill safe">BLOCKED</span></div>
+          </li>
+          <li>
+            <div class="when">MONDAY</div>
+            <div class="what"><p>Flagged a giveaway link with only a few community reports — proceed with caution.</p><span class="tagpill warn">FLAGGED</span></div>
+          </li>
+          <li>
+            <div class="when">LAST WEEK</div>
+            <div class="what"><p>Blocked a link 340 people had already reported as a scam.</p><span class="tagpill safe">BLOCKED</span></div>
+          </li>
+          <li>
+            <div class="when">3 WEEKS AGO</div>
+            <div class="what"><p>Blocked a fake "IRS refund" link requesting bank details.</p><span class="tagpill safe">BLOCKED</span></div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="community">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-eyebrow">Community reports</div>
+      <div class="section-title">Reported by someone. Blocked for everyone.</div>
+      <p class="section-sub">If you land on a scam link, flag it in a few seconds. The next person who clicks it gets warned automatically — no waiting for it to show up on an official list.</p>
+    </div>
+    <div class="risk-wrap">
+      <div class="risk-card">
+        <div class="form-field">
+          <label>Link</label>
+          <input type="text" placeholder="https://" readonly>
+        </div>
+        <div class="form-field">
+          <label>What happened?</label>
+          <div class="chip-row">
+            <span class="chip active">Scam / Fraud</span>
+            <span class="chip">Phishing</span>
+            <span class="chip">Fake checkout</span>
+            <span class="chip">Other</span>
+          </div>
+        </div>
+        <div class="form-field">
+          <label>Details (optional)</label>
+          <textarea placeholder="Tell us what happened..." readonly></textarea>
+        </div>
+        <a class="btn btn-primary" href="#community" style="width:100%;justify-content:center;">Submit report</a>
+        <p class="form-note">Reports are checked automatically and folded into the scam-link list within minutes — no account or sign-up needed.</p>
+      </div>
+      <div>
+        <div class="timeline-head">// COMMUNITY REPORTS</div>
+        <ul class="report-feed">
+          <li>
+            <div class="top-row">
+              <span class="domain">secure-bankonline-verify[.]com</span>
+              <span class="tagpill safe">CONFIRMED · BLOCKED</span>
+            </div>
+            <div class="meta">214 reports — cloned login page collecting credentials.</div>
+          </li>
+          <li>
+            <div class="top-row">
+              <span class="domain">quick-crypto-doubler[.]net</span>
+              <span class="tagpill warn">UNDER REVIEW</span>
+            </div>
+            <div class="meta">12 reports — promises to double any crypto deposit.</div>
+          </li>
+          <li>
+            <div class="top-row">
+              <span class="domain">prize-claim-fast[.]info</span>
+              <span class="tagpill safe">CONFIRMED · BLOCKED</span>
+            </div>
+            <div class="meta">58 reports — fake sweepstakes asking for card details.</div>
+          </li>
+          <li>
+            <div class="top-row">
+              <span class="domain">invoice-payment-update[.]com</span>
+              <span class="tagpill warn">UNDER REVIEW</span>
+            </div>
+            <div class="meta">6 reports — fake invoice redirect for a wire payment.</div>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="different">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-eyebrow">Why it's built this way</div>
+      <div class="section-title">Protection without the babysitting</div>
+      <p class="section-sub">Most security tools ask you to watch a live feed. Overseer is built around the opposite idea.</p>
+    </div>
+    <div class="feat-grid cols-3">
+      <div class="feat">
+        <div class="feat-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8"/></svg></div>
+        <h3>No dashboard to babysit</h3>
+        <p>There's nothing to leave open on a second monitor. Overseer isn't a feed you're expected to watch.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg></div>
+        <h3>Not continuously scanning</h3>
+        <p>It steps in around specific financial moments — a login, a payment, a copy-paste — not your whole browsing session.</p>
+      </div>
+      <div class="feat">
+        <div class="feat-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" stroke-width="2"><path d="M12 3l8 4v5c0 5-3.4 8.7-8 9-4.6-.3-8-4-8-9V7z"/></svg></div>
+        <h3>Explains every action</h3>
+        <p>Every hold or block comes with a plain-language reason, not just a red banner and no context.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="pricing">
+  <div class="wrap">
+    <div class="section-head" style="margin:0 auto 42px;text-align:center;max-width:640px;">
+      <div class="section-eyebrow">Pricing</div>
+      <div class="section-title">One plan. It's free.</div>
+      <p class="section-sub">No subscription, no premium tier, nothing held back behind a paywall.</p>
+    </div>
+    <div class="pricing-card">
+      <div class="pricing-price">$0<span>/ forever</span></div>
+      <p class="pricing-sub">Every install gets the full system — background guard, threat graph, risk engine, and enforcement — from day one.</p>
+      <ul class="pricing-list">
+        <li><span class="check">✓</span>Background Guard</li>
+        <li><span class="check">✓</span>Threat Graph</li>
+        <li><span class="check">✓</span>Rule + AI Risk Engine</li>
+        <li><span class="check">✓</span>Silent Enforcement</li>
+        <li><span class="check">✓</span>Unlimited protection reports</li>
+        <li><span class="check">✓</span>Full activity history</li>
+        <li><span class="check">✓</span>Report unlimited scam links</li>
+        <li><span class="check">✓</span>Community-reported warnings</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="faq" style="border-bottom:none;">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-eyebrow">Questions</div>
+      <div class="section-title">Frequently asked</div>
+    </div>
+    <div class="faq-list">
+      <details class="faq-item" open>
+        <summary>Does Overseer cost anything?</summary>
+        <p>No. Overseer is free to use, with no subscription and no features held back behind a paywall.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Does it slow down my browser?</summary>
+        <p>It's not continuously scanning everything you do. It watches for specific financial moments — logins, payments, clipboard changes — so there's nothing running in the background most of the time.</p>
+      </details>
+      <details class="faq-item">
+        <summary>What does it actually see?</summary>
+        <p>Signals tied to financial activity: bank and payment domains, checkout forms, clipboard changes, autofill, and notification prompts. It isn't logging your general browsing.</p>
+      </details>
+      <details class="faq-item">
+        <summary>What happens when it blocks something?</summary>
+        <p>The risky action is held or stopped immediately, and a plain-language report is waiting for you next time you open the app — what happened, why, and what Overseer did about it.</p>
+      </details>
+      <details class="faq-item">
+        <summary>How is the risk score calculated?</summary>
+        <p>Each signal adds to a percentage score: +10% if the destination is a newly discovered page, +15% if the destination changed shortly after your input, +20% if it uses sendBeacon or fires without your knowledge, +40% if there's an outgoing request body, and +45% if the request is cross-origin. Below 40%, the action is allowed. From 40–70%, it's allowed but warned and logged. At 70% and above, it's blocked outright.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Do I need to configure anything?</summary>
+        <p>No setup required. Overseer works out of the box once it's installed, and you can open it anytime to check its activity history.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Can I report a scam link myself?</summary>
+        <p>Yes. Report any link in a few seconds — no account needed. Once it's confirmed, every other user gets warned automatically before they open it.</p>
+      </details>
+      <details class="faq-item">
+        <summary>Is my data sent anywhere?</summary>
+        <p>Only what's needed to evaluate a specific risky moment gets analyzed — Overseer isn't built to collect or sell your browsing data.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-top">
+      <div class="foot-col">
+        <div class="brand-row">
+          <svg class="eye-icon" width="26" height="26" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" fill="#FF4B2B"/>
+            <ellipse cx="12" cy="12" rx="1.7" ry="4.8" fill="#0A0D12"/>
+          </svg>
+          <div class="wordmark" style="margin-bottom:0;font-size:28px;">Overseer</div>
+        </div>
+        <p style="color:var(--muted);font-size:13.5px;margin-top:10px;max-width:260px;">Doesn't watch every second. Catches the moment that matters.</p>
+      </div>
+      <div class="foot-col">
+        <h4>Product</h4>
+        <a href="#how">How it works</a>
+        <a href="#threats">What it stops</a>
+        <a href="#open">Open the app</a>
+        <a href="#community">Community reports</a>
+        <a href="#different">Why it's different</a>
+      </div>
+      <div class="foot-col">
+        <h4>Pricing</h4>
+        <a href="#pricing">Plans</a>
+        <a href="#faq">FAQ</a>
+      </div>
+      <div class="foot-col">
+        <h4>Overseer</h4>
+        <a href="#">About</a>
+        <a href="#">Privacy</a>
+        <a href="#">Contact</a>
+      </div>
+    </div>
+    <div class="foot-row">
+      <p style="color:var(--muted);font-size:12.5px;margin:0;">© Overseer — hackathon safety-track build.</p>
+      <div class="badges">
+        <span class="badge free">FREE FOREVER</span>
+        <span class="badge">BACKGROUND APP</span>
+        <span class="badge">OPENS ON DEMAND</span>
+        <span class="badge">FRAUD PATTERN DETECTION</span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  const steps = [
+    {n:'n0', l:'l0', log:'$ outbound link clicked — resolving destination'},
+    {n:'n1', l:'l1', edge:'e0', log:'$ event: domain checked against 40k+ known scam links'},
+    {n:'n2', l:'l2', edge:'e1', log:'$ event: 214 community reports for this link [MATCH]'},
+    {n:'n3', l:'l3', edge:'e2', log:'$ event: matches cloned-login phishing pattern [RULE MATCH]'},
+    {n:'n4', l:'l4', edge:'e3', log:'$ event: warning shown before page finished loading'},
+    {n:'n5', l:'l5', edge:'e4', log:'$ verdict: risk 97% · <span class="ok">ACTION: BLOCKED</span>'}
+  ];
+  let i = 0;
+  const pill = document.getElementById('statusPill');
+  const logEl = document.getElementById('logLine');
+
+  function reset(){
+    steps.forEach(s=>{
+      document.getElementById(s.n).classList.remove('lit');
+      document.getElementById(s.l).classList.remove('active');
+      if(s.edge) document.getElementById(s.edge).classList.remove('lit','blocked');
+    });
+    pill.textContent = 'ARMED';
+    pill.style.color = 'var(--safe)';
+    pill.style.background = 'var(--safe-dim)';
+  }
+
+  function step(){
+    if(i === 0) reset();
+    const s = steps[i];
+    document.getElementById(s.n).classList.add('lit');
+    document.getElementById(s.l).classList.add('active');
+    if(s.edge){
+      const isLast = i === steps.length - 1;
+      document.getElementById(s.edge).classList.add(isLast ? 'blocked' : 'lit');
+    }
+    logEl.innerHTML = s.log;
+    if(i === steps.length - 1){
+      pill.textContent = 'BLOCKED';
+      pill.style.color = 'var(--alert)';
+      pill.style.background = 'var(--alert-dim)';
+    }
+    i++;
+    if(i >= steps.length){
+      setTimeout(()=>{ i = 0; step(); }, 2200);
+    } else {
+      setTimeout(step, 850);
+    }
+  }
+  step();
+})();
+</script>
+
+</body>
+</html>

@@ -83,7 +83,21 @@ export function createApp() {
         res.status(400).json({ error: "keyTimestamps must be an array of numbers" });
         return;
       }
-      const result = await handleHoneypotCommand(commandText, keyTimestamps);
+      const rawContext = req.body.deviceContext;
+      const boundedString = (value: unknown, max: number): string | undefined =>
+        typeof value === "string" && value.length > 0 && value.length <= max ? value : undefined;
+      const deviceKey = rawContext && typeof rawContext === "object" ? boundedString(rawContext.deviceKey, 300) : undefined;
+      const deviceName = rawContext && typeof rawContext === "object" ? boundedString(rawContext.deviceName, 200) : undefined;
+      const deviceContext =
+        deviceKey && deviceName
+          ? {
+              deviceKey,
+              deviceName,
+              vendorId: boundedString(rawContext.vendorId, 16),
+              productId: boundedString(rawContext.productId, 16),
+            }
+          : undefined;
+      const result = await handleHoneypotCommand(commandText, keyTimestamps, deviceContext);
       res.json(result);
     } catch (err) {
       next(err);

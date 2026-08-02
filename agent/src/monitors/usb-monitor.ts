@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { evaluateRisk, buildIncident } from "../risk/engine.ts";
 import { addIncident, getSettings } from "../storage/store.ts";
+import { createHardwareAssessment, getCurrentHardwareAssessment } from "../hardware/hid-assessment.ts";
 import type { EventCategory, Incident, SentinelEvent } from "../shared/types.ts";
 
 const execFileAsync = promisify(execFile);
@@ -39,6 +40,17 @@ export interface UsbDevice {
 interface DefenderScanResult {
   status: "clean" | "threat_found" | "unavailable";
   threatCount: number;
+}
+
+interface WindowsUsbRecord {
+  Kind?: string;
+  DeviceID?: string;
+  VolumeName?: string;
+  VolumeSerialNumber?: string;
+  InstanceId?: string;
+  Name?: string;
+  Class?: string;
+  ContainerId?: string;
 }
 
 function classify(node: UsbDeviceNode): EventCategory {
@@ -84,36 +96,195 @@ async function listMacUsbDevices(): Promise<UsbDevice[]> {
   }
 }
 
-async function listWindowsUsbDevices(): Promise<UsbDevice[]> {
+function usbCategoryPriority(category: EventCategory): number {
+  if (category === "usb_network_device") return 3;
+  if (category === "usb_hid_device") return 2;
+  return 1;
+}
+
+function classifyWindowsPnp(record: WindowsUsbRecord): EventCategory {
+  const deviceClass = (record.Class || "").toLowerCase();
+  const name = (record.Name || "").toLowerCase();
+  if (deviceClass === "net" || /ethernet|network|wireless|\blan\b/.test(name)) return "usb_network_device";
+  if (["keyboard", "mouse", "hidclass"].includes(deviceClass) || /keyboard|mouse|\bhid\b|input device/.test(name)) {
+    return "usb_hid_device";
+  }
+  return "usb_other_device";
+}
+
+function parseCsvLine(line: string): string[] {
+  const fields: string[] = [];
+  let field = "";
+  let quoted = false;
+
+  for (let index = 0; index < line.length; index++) {
+    const character = line[index]!;
+    if (character === '"') {
+      if (quoted && line[index + 1] === '"') {
+        field += '"';
+        index++;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (character === "," && !quoted) {
+      fields.push(field);
+      field = "";
+    } else {
+      field += character;
+    }
+  }
+  fields.push(field);
+  return fields;
+}
+
+/** Parses the stable CSV output produced by `pnputil /enum-devices /connected /format csv`. */
+export function parsePnputilUsbDevices(stdout: string): UsbDevice[] {
+  const lines = stdout.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length < 2) return [];
+
+  const headers = parseCsvLine(lines[0]!);
+  const instanceIndex = headers.indexOf("InstanceId");
+  const nameIndex = headers.indexOf("DeviceDescription");
+  const classIndex = headers.indexOf("ClassName");
+  if (instanceIndex < 0 || nameIndex < 0 || classIndex < 0) return [];
+
+  const records: WindowsUsbRecord[] = [];
+  for (const line of lines.slice(1)) {
+    const fields = parseCsvLine(line);
+    const instanceId = fields[instanceIndex];
+    const deviceClass = fields[classIndex];
+    if (!instanceId || !/^(USB|HID)\\VID_/i.test(instanceId)) continue;
+    if (!deviceClass || !["keyboard", "mouse", "hidclass", "net"].includes(deviceClass.toLowerCase())) continue;
+    records.push({
+      Kind: "pnp",
+      InstanceId: instanceId,
+      Name: fields[nameIndex],
+      Class: deviceClass,
+    });
+  }
+
+  return parseWindowsUsbDevices(JSON.stringify(records));
+}
+
+/** Converts the bounded PowerShell snapshot into stable, de-duplicated USB devices. Exported for fixture tests. */
+export function parseWindowsUsbDevices(stdout: string): UsbDevice[] {
+  const decoded = JSON.parse(stdout || "[]") as WindowsUsbRecord | WindowsUsbRecord[] | null;
+  const records = decoded == null ? [] : Array.isArray(decoded) ? decoded : [decoded];
+  const devices = new Map<string, UsbDevice>();
+
+  for (const record of records) {
+    if (record.Kind === "storage") {
+      if (typeof record.DeviceID !== "string" || !/^[A-Za-z]:$/.test(record.DeviceID)) continue;
+      const deviceId = record.DeviceID.toUpperCase();
+      const key = `volume:${record.VolumeSerialNumber || deviceId}`.toLowerCase();
+      devices.set(key, {
+        key,
+        name: record.VolumeName?.trim() || `Removable drive ${deviceId}`,
+        category: "usb_storage_device",
+        bsdName: deviceId,
+      });
+      continue;
+    }
+
+    if (record.Kind !== "pnp" || typeof record.InstanceId !== "string") continue;
+    if (!/^(USB|HID)\\VID_/i.test(record.InstanceId)) continue;
+
+    const category = classifyWindowsPnp(record);
+    const vendorId = record.InstanceId.match(/VID_([0-9A-F]{4})/i)?.[1]?.toUpperCase();
+    const productId = record.InstanceId.match(/PID_([0-9A-F]{4})/i)?.[1]?.toUpperCase();
+    // pnputil does not expose the Windows container ID. VID/PID is the
+    // best privacy-preserving composite-device identity available in its
+    // unprivileged CSV output and collapses a keyboard's USB + HID nodes.
+    const identity = record.ContainerId?.trim() || (vendorId && productId ? `${vendorId}:${productId}` : record.InstanceId);
+    const key = `pnp:${identity}`.toLowerCase();
+    const device: UsbDevice = {
+      key,
+      name: record.Name?.trim() || (category === "usb_hid_device" ? "USB keyboard/HID device" : "USB device"),
+      vendorId,
+      productId,
+      category,
+      bsdName: null,
+    };
+
+    // Composite devices commonly expose both HIDClass and Keyboard nodes
+    // with the same container ID. Keep one incident and prefer the category
+    // carrying the stronger security signal.
+    const existing = devices.get(key);
+    if (!existing || usbCategoryPriority(device.category) > usbCategoryPriority(existing.category)) {
+      devices.set(key, device);
+    }
+  }
+
+  return [...devices.values()];
+}
+
+const WINDOWS_PNP_CACHE_MS = 350;
+let cachedWindowsPnpSnapshot: { capturedAt: number; devices: UsbDevice[] } | null = null;
+let windowsPnpScanInFlight: Promise<UsbDevice[]> | null = null;
+
+async function listWindowsPnpDevices(): Promise<UsbDevice[]> {
+  const now = Date.now();
+  if (cachedWindowsPnpSnapshot && now - cachedWindowsPnpSnapshot.capturedAt <= WINDOWS_PNP_CACHE_MS) {
+    return cachedWindowsPnpSnapshot.devices;
+  }
+  if (windowsPnpScanInFlight) return windowsPnpScanInFlight;
+
+  windowsPnpScanInFlight = execFileAsync("pnputil.exe", ["/enum-devices", "/connected", "/format", "csv"], {
+    maxBuffer: 4 * 1024 * 1024,
+    windowsHide: true,
+  }).then(({ stdout }) => parsePnputilUsbDevices(stdout));
+
+  try {
+    const devices = await windowsPnpScanInFlight;
+    cachedWindowsPnpSnapshot = { capturedAt: Date.now(), devices };
+    return devices;
+  } finally {
+    windowsPnpScanInFlight = null;
+  }
+}
+
+async function listWindowsStorageDevices(): Promise<UsbDevice[]> {
   const query = [
     "$ErrorActionPreference = 'Stop'",
-    "$items = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=2' | Select-Object DeviceID,VolumeName,VolumeSerialNumber)",
-    "ConvertTo-Json -InputObject $items -Compress",
+    "$records = [System.Collections.Generic.List[object]]::new()",
+    "$volumes = @([System.IO.DriveInfo]::GetDrives() | Where-Object { $_.DriveType -eq [System.IO.DriveType]::Removable })",
+    "foreach ($volume in $volumes) { $label = $null; try { $label = $volume.VolumeLabel } catch {}; $records.Add([pscustomobject]@{ Kind = 'storage'; DeviceID = $volume.Name.Substring(0, 2); VolumeName = $label; VolumeSerialNumber = $null }) }",
+    "ConvertTo-Json -InputObject @($records) -Depth 3 -Compress",
   ].join("; ");
+
   try {
     const { stdout } = await execFileAsync("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", query], {
       maxBuffer: 1024 * 1024,
       windowsHide: true,
     });
-    const parsed = JSON.parse(stdout || "[]") as Array<{ DeviceID?: string; VolumeName?: string; VolumeSerialNumber?: string }>;
-    return parsed
-      .filter((volume) => typeof volume.DeviceID === "string" && /^[A-Za-z]:$/.test(volume.DeviceID))
-      .map((volume) => ({
-        key: volume.VolumeSerialNumber || volume.DeviceID!,
-        name: volume.VolumeName?.trim() || `Removable drive ${volume.DeviceID}`,
-        category: "usb_storage_device" as const,
-        bsdName: volume.DeviceID!,
-      }));
+    return parseWindowsUsbDevices(stdout);
   } catch (err) {
-    console.error("[GhostShield] Windows USB discovery failed:", (err as Error).message);
+    console.warn("[GhostShield] Windows removable-volume discovery failed:", (err as Error).message);
     return [];
   }
+}
+
+async function listWindowsUsbDevices(): Promise<UsbDevice[]> {
+  const [pnpResult, storageResult] = await Promise.allSettled([listWindowsPnpDevices(), listWindowsStorageDevices()]);
+  if (pnpResult.status === "rejected") {
+    console.error("[GhostShield] Windows HID discovery failed:", pnpResult.reason instanceof Error ? pnpResult.reason.message : String(pnpResult.reason));
+  }
+  return [
+    ...(pnpResult.status === "fulfilled" ? pnpResult.value : []),
+    ...(storageResult.status === "fulfilled" ? storageResult.value : []),
+  ];
 }
 
 export async function listUsbDevices(): Promise<UsbDevice[]> {
   if (process.platform === "win32") return listWindowsUsbDevices();
   if (process.platform === "darwin") return listMacUsbDevices();
   return [];
+}
+
+/** Fast path used by the armed watcher; it never waits for storage/Defender enumeration on Windows. */
+export async function listUsbHidDevices(): Promise<UsbDevice[]> {
+  const devices = process.platform === "win32" ? await listWindowsPnpDevices() : await listUsbDevices();
+  return devices.filter((device) => device.category === "usb_hid_device");
 }
 
 async function scanWindowsVolume(deviceId: string): Promise<DefenderScanResult> {
@@ -174,9 +345,21 @@ export async function runUsbMonitorTick(): Promise<Incident[]> {
     const event: SentinelEvent = {
       category: device.category,
       timestamp: now,
+      deviceKey: device.key,
       deviceName: device.name,
       vendorId: device.vendorId,
       productId: device.productId,
+      hardwareAssessment:
+        device.category === "usb_hid_device"
+          ? getCurrentHardwareAssessment(device.key) ??
+            createHardwareAssessment(
+              "observing",
+              "New keyboard-class hardware is being observed for scripted input and suspicious process activity.",
+              ["new USB HID attachment"],
+              "low",
+              new Date(now)
+            )
+          : undefined,
       bsdName: device.bsdName,
       defenderScanStatus: defender?.status,
       defenderThreatCount: defender?.threatCount,

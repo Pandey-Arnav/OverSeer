@@ -18,3 +18,21 @@ test("buildMockVerdict does not flag an ordinary command", () => {
   assert.equal(verdict.malicious, false);
   assert.deepEqual(verdict.findings, []);
 });
+
+test("buildMockVerdict flags encoded PowerShell execution", () => {
+  const verdict = buildMockVerdict("powershell.exe -EncodedCommand SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAKQA=");
+  assert.equal(verdict.malicious, true);
+  assert.match(verdict.findings.join(" "), /PowerShell/i);
+});
+
+test("buildMockVerdict flags attempts to weaken Microsoft Defender", () => {
+  const verdict = buildMockVerdict("Set-MpPreference -DisableRealtimeMonitoring $true");
+  assert.equal(verdict.malicious, true);
+  assert.match(verdict.findings.join(" "), /Defender/i);
+});
+
+test("buildMockVerdict flags Windows persistence", () => {
+  const verdict = buildMockVerdict('schtasks /create /tn "Updater" /tr payload.exe /sc onlogon');
+  assert.equal(verdict.malicious, true);
+  assert.match(verdict.findings.join(" "), /persistence/i);
+});

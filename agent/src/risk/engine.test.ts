@@ -342,3 +342,27 @@ test("buildIncident carries honeypotCommand through for honeypot categories", ()
   assert.equal(incident.honeypotCommand, "rm -rf ~/Documents");
   assert.equal(incident.decision, "blocked");
 });
+
+test("buildIncident carries HID identity and hardware assessment evidence", () => {
+  const event: SentinelEvent = {
+    category: "usb_hid_device",
+    timestamp: Date.now(),
+    deviceKey: "pnp:0483:5750",
+    deviceName: "HID Keyboard Device",
+    vendorId: "0483",
+    productId: "5750",
+    hardwareAssessment: {
+      verdict: "suspicious",
+      confidence: "medium",
+      reason: "A command shell appeared immediately after attachment.",
+      evidence: ["new cmd.exe process"],
+      assessedAt: new Date().toISOString(),
+    },
+  };
+  const incident = buildIncident(event, evaluateRisk(event), null, "hid-test", new Date().toISOString());
+
+  assert.equal(incident.deviceKey, "pnp:0483:5750");
+  assert.equal(incident.vendorId, "0483");
+  assert.equal(incident.productId, "5750");
+  assert.equal(incident.hardwareAssessment?.verdict, "suspicious");
+});
