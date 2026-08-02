@@ -199,7 +199,7 @@ function pill(s, txt, x, y, color, bg, fontSize = 10) {
   const lx = PW / 2 - 3.6, ly = 5.4, lw = 7.2;
   s.addShape(pres.ShapeType.roundRect, { x: lx, y: ly, w: lw, h: 0.7, rectRadius: 0.06, fill: { color: PANEL }, line: { color: LINE, width: 0.75 } });
   s.addText([
-    { text: "$ verdict: risk 97/100  ", options: { color: MUTED } },
+    { text: "$ verdict: risk 97%  ", options: { color: MUTED } },
     { text: "ACTION: BLOCKED", options: { color: SAFE, bold: true } }
   ], {
     x: lx + 0.25, y: ly, w: lw - 0.5, h: 0.7, fontFace: F_MONO, fontSize: 13, valign: "middle", margin: 0
@@ -336,9 +336,9 @@ function pill(s, txt, x, y, color, bg, fontSize = 10) {
   const cx = 0.7, cy = 2.75, cw = 6.0, ch = 3.9;
   s.addShape(pres.ShapeType.roundRect, { x: cx, y: cy, w: cw, h: ch, rectRadius: 0.08, fill: { color: PANEL }, line: { color: LINE, width: 0.75 } });
   s.addText("94", { x: cx + 0.3, y: cy + 0.25, w: 2, h: 0.9, fontFace: F_TITLE, bold: true, fontSize: 46, color: ALERT, margin: 0 });
-  s.addText("/100", { x: cx + 1.55, y: cy + 0.65, w: 1, h: 0.5, fontFace: F_MONO, fontSize: 14, color: MUTED, margin: 0 });
+  s.addText("%", { x: cx + 1.35, y: cy + 0.65, w: 1, h: 0.5, fontFace: F_MONO, fontSize: 14, color: MUTED, margin: 0 });
   s.addText("CONFIDENCE", { x: cw + cx - 2.0, y: cy + 0.3, w: 1.7, h: 0.25, fontFace: F_MONO, fontSize: 9.5, color: MUTED, align: "right", margin: 0 });
-  s.addText("0.91", { x: cw + cx - 2.0, y: cy + 0.55, w: 1.7, h: 0.35, fontFace: F_TITLE, bold: true, fontSize: 15, color: TEXT, align: "right", margin: 0 });
+  s.addText("91%", { x: cw + cx - 2.0, y: cy + 0.55, w: 1.7, h: 0.35, fontFace: F_TITLE, bold: true, fontSize: 15, color: TEXT, align: "right", margin: 0 });
 
   const rows = [
     ["PATTERN", "Cloned Bank Login Link"],
