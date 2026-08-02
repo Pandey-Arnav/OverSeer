@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { evaluateRisk, buildIncident } from "../risk/engine.ts";
 import { addIncident, getSettings } from "../storage/store.ts";
+import { createHardwareAssessment, getCurrentHardwareAssessment } from "../hardware/hid-assessment.ts";
 import type { EventCategory, Incident, SentinelEvent } from "../shared/types.ts";
 
 const execFileAsync = promisify(execFile);
@@ -344,9 +345,21 @@ export async function runUsbMonitorTick(): Promise<Incident[]> {
     const event: SentinelEvent = {
       category: device.category,
       timestamp: now,
+      deviceKey: device.key,
       deviceName: device.name,
       vendorId: device.vendorId,
       productId: device.productId,
+      hardwareAssessment:
+        device.category === "usb_hid_device"
+          ? getCurrentHardwareAssessment(device.key) ??
+            createHardwareAssessment(
+              "observing",
+              "New keyboard-class hardware is being observed for scripted input and suspicious process activity.",
+              ["new USB HID attachment"],
+              "low",
+              new Date(now)
+            )
+          : undefined,
       bsdName: device.bsdName,
       defenderScanStatus: defender?.status,
       defenderThreatCount: defender?.threatCount,

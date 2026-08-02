@@ -20,6 +20,23 @@ export type EventCategory =
 
 export type Severity = "low" | "medium" | "high";
 
+export type HardwareVerdict = "observing" | "no_harmful_behavior_observed" | "suspicious" | "harmful";
+
+export interface HardwareAssessment {
+  verdict: HardwareVerdict;
+  confidence: "low" | "medium" | "high";
+  reason: string;
+  evidence: string[];
+  assessedAt: string;
+}
+
+export interface HidDeviceContext {
+  deviceKey: string;
+  deviceName: string;
+  vendorId?: string;
+  productId?: string;
+}
+
 /**
  * "blocked" means one of two things depending on category:
  *   - network_connection / usb_storage_device: "crossed the action
@@ -68,9 +85,11 @@ export interface SentinelEvent {
   distinctRemoteHostsInWindow?: number;
 
   // usb_* fields
+  deviceKey?: string;
   deviceName?: string;
   vendorId?: string;
   productId?: string;
+  hardwareAssessment?: HardwareAssessment;
   bsdName?: string | null; // for storage devices, used for eject
   defenderScanStatus?: "clean" | "threat_found" | "unavailable";
   defenderThreatCount?: number;
@@ -119,7 +138,11 @@ export interface Incident {
   processPath: string | null;
   remoteAddress: string | null;
   remotePort: number | null;
+  deviceKey?: string | null;
   deviceName: string | null;
+  vendorId?: string | null;
+  productId?: string | null;
+  hardwareAssessment?: HardwareAssessment | null;
   pageOrigin: string | null;
   tamperedFieldNames: string[] | null;
   scriptFindings: string[] | null;

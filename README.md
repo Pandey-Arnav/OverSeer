@@ -64,9 +64,10 @@ AI-explanation request.
 - Shipping a second malware signature database; GhostShield orchestrates the
   platform antivirus rather than pretending AEGIS is itself a signature scanner
 
-**What Sentinel Agent deliberately never collects:** full network
-payloads, file contents, keystrokes, or anything beyond connection/
-device metadata (process name, path, remote address/port, device name).
+**What Sentinel Agent deliberately never collects:** full network payloads,
+file contents, clipboard data, or global keystrokes. The armed decoy measures
+only timing inside its own focused input and retains command text only when it
+is evidence for a suspicious or harmful incident.
 
 ## Features
 
@@ -88,6 +89,10 @@ device metadata (process name, path, remote address/port, device name).
   attack history, and category/severity/framework analytics
 - Deterministic event correlation that groups repeated activity from the
   same process, destination, device, or web origin inside a ten-minute window
+- Behavior-based USB HID assessment with four honest states: observing,
+  no harmful behavior observed, suspicious automation, and harmful command
+  intent. The Windows watcher correlates new HID hardware with scripted input
+  timing and newly spawned shell/script-host processes.
 - Potential MITRE ATT&CK and OWASP Top 10:2025 mappings for supported
   behaviors. These are explicitly labeled as behavioral alignments rather
   than proof that an attack technique succeeded
@@ -307,14 +312,16 @@ unit-tested in isolation:
 
 ## Privacy guarantees
 
-Sentinel Agent never collects: file contents, keystrokes, clipboard
-data, or full network payloads. What it stores locally
-(`~/.sentinel/incidents.json`, never transmitted anywhere): process
-name/path, remote address/port or device name, the computed score and
-which named rules fired. The only thing that ever leaves the machine is
-that same incident metadata, sent to your configured AI endpoint **only
-when you click "Generate AI explanation,"** and only if you've set an
-API key — the default mock mode makes zero network calls.
+Sentinel Agent never collects global keystrokes, file contents, clipboard
+data, or full network payloads. The armed decoy terminal measures timing only
+inside its own focused input and stores command text only when it becomes
+security evidence for a suspicious/harmful incident. No decoy command is ever
+executed. Locally stored incident data includes process name/path, remote
+address/port or device identity, the computed score, and the named evidence
+rules that fired. If an API key is configured, a command entered into the
+decoy may be sent to that configured AI endpoint for intent classification;
+incident metadata is also sent when you click **Generate AI explanation**.
+The default mock mode makes zero network calls.
 
 ## Known limitations
 
