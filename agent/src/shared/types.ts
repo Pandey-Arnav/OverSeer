@@ -182,6 +182,66 @@ export interface AIExplanation {
   recommendation: string;
 }
 
+export interface FrameworkMapping {
+  framework: "MITRE ATT&CK" | "OWASP Top 10";
+  id: string;
+  name: string;
+  url: string;
+}
+
+export interface SecurityAlert {
+  incidentId: string;
+  timestamp: string;
+  title: string;
+  severity: Severity;
+  score: number;
+  decision: Decision;
+  recommendation: string;
+}
+
+export interface EventCorrelation {
+  id: string;
+  title: string;
+  description: string;
+  signal: string;
+  incidentIds: string[];
+  firstSeen: string;
+  lastSeen: string;
+  score: number;
+  severity: Severity;
+}
+
+export interface AttackHistoryBucket {
+  date: string;
+  total: number;
+  high: number;
+  medium: number;
+  peakScore: number;
+}
+
+export interface AnalyticsMetric {
+  label: string;
+  count: number;
+  averageScore: number;
+}
+
+export interface SecurityInsights {
+  generatedAt: string;
+  liveRiskScore: number;
+  liveRiskLevel: "normal" | "guarded" | "elevated" | "critical";
+  activeAlertCount: number;
+  alerts: SecurityAlert[];
+  correlations: EventCorrelation[];
+  mappingsByIncident: Record<string, FrameworkMapping[]>;
+  history: AttackHistoryBucket[];
+  analytics: {
+    categories: AnalyticsMetric[];
+    severities: AnalyticsMetric[];
+    decisions: AnalyticsMetric[];
+    mappings: AnalyticsMetric[];
+  };
+}
+
 export interface Settings {
   protectionEnabled: boolean;
   aiExplanationsEnabled: boolean;

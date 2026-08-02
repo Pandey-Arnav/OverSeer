@@ -10,6 +10,7 @@ import { generateExplanation } from "./ai-explanation.ts";
 import { ejectUsbDevice, terminateProcess } from "../remediation/actions.ts";
 import { evaluateIncidentWithAegis, getAegisHealth } from "../aegis/client.ts";
 import { handleHoneypotCommand } from "../honeypot/session.ts";
+import { buildSecurityInsights } from "../insights/security-insights.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -26,6 +27,10 @@ export function createApp() {
 
   app.get("/api/incidents", async (_req, res) => {
     res.json(await getIncidents());
+  });
+
+  app.get("/api/insights", async (_req, res) => {
+    res.json(buildSecurityInsights(await getIncidents()));
   });
 
   app.get("/api/aegis/health", async (_req, res) => {

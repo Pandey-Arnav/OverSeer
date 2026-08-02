@@ -6,7 +6,7 @@ description = "AEGIS ForkGuard counterfactual incident review for GhostShield Se
 [dependencies]
 jaclang = ">=0.16.7"
 
-[serve]
+[plugins.scale.server]
 port = 8012
 host = "127.0.0.1"
 

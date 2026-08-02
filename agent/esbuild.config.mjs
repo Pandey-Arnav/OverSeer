@@ -1,4 +1,5 @@
 import * as esbuild from "esbuild";
+import { fileURLToPath } from "node:url";
 
 const watch = process.argv.includes("--watch");
 
@@ -7,10 +8,10 @@ const watch = process.argv.includes("--watch");
 // native TypeScript support, no build step required.
 const config = {
   entryPoints: [
-    { in: "src/dashboard/dashboard.ts", out: "dashboard" },
-    { in: "src/honeypot/terminal-client.ts", out: "honeypot" },
+    { in: fileURLToPath(new URL("./src/dashboard/dashboard.ts", import.meta.url)), out: "dashboard" },
+    { in: fileURLToPath(new URL("./src/honeypot/terminal-client.ts", import.meta.url)), out: "honeypot" },
   ],
-  outdir: "public",
+  outdir: fileURLToPath(new URL("./public", import.meta.url)),
   bundle: true,
   format: "iife",
   target: "es2022",

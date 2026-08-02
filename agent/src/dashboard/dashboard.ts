@@ -3,7 +3,16 @@
  * bundled to public/dashboard.js by esbuild since the browser can't run
  * .ts directly. Talks to the same-origin Express API in server/app.ts.
  */
-import type { AegisReport, AIExplanation, Decision, Incident, Settings } from "../shared/types.ts";
+import type {
+  AegisReport,
+  AIExplanation,
+  AnalyticsMetric,
+  Decision,
+  FrameworkMapping,
+  Incident,
+  SecurityInsights,
+  Settings,
+} from "../shared/types.ts";
 
 const REFRESH_INTERVAL_MS = 5000;
 
@@ -28,6 +37,17 @@ const REFRESH_INTERVAL_MS = 5000;
   const filterSearch = requireEl<HTMLInputElement>("filter-search");
   const rowsContainer = requireEl<HTMLTableSectionElement>("incident-rows");
   const emptyState = requireEl<HTMLElement>("empty-state");
+  const alertsList = requireEl<HTMLElement>("alerts-list");
+  const alertsEmpty = requireEl<HTMLElement>("alerts-empty");
+  const timelineList = requireEl<HTMLElement>("timeline-list");
+  const timelineEmpty = requireEl<HTMLElement>("timeline-empty");
+  const correlationList = requireEl<HTMLElement>("correlation-list");
+  const correlationEmpty = requireEl<HTMLElement>("correlation-empty");
+  const analyticsCategories = requireEl<HTMLElement>("analytics-categories");
+  const analyticsSeverities = requireEl<HTMLElement>("analytics-severities");
+  const analyticsMappings = requireEl<HTMLElement>("analytics-mappings");
+  const attackHistoryList = requireEl<HTMLElement>("attack-history-list");
+  const historyEmpty = requireEl<HTMLElement>("history-empty");
 
   const confirmOverlay = requireEl<HTMLElement>("confirm-overlay");
   const confirmMessage = requireEl<HTMLElement>("confirm-message");
@@ -36,6 +56,7 @@ const REFRESH_INTERVAL_MS = 5000;
 
   let allIncidents: Incident[] = [];
   let settings: Settings = { protectionEnabled: true, aiExplanationsEnabled: true, honeypotArmed: false };
+  let insights: SecurityInsights | null = null;
   let expandedId: string | null = null;
   let pendingConfirmAction: (() => Promise<void>) | null = null;
 
@@ -74,12 +95,17 @@ const REFRESH_INTERVAL_MS = 5000;
     });
   }
 
-  function renderSummary(incidents: Incident[]): void {
-    requireEl<HTMLElement>("summary-total").textContent = String(incidents.length);
-    requireEl<HTMLElement>("summary-blocked").textContent = String(incidents.filter((i) => i.decision === "blocked").length);
-    requireEl<HTMLElement>("summary-warned").textContent = String(incidents.filter((i) => i.decision === "warn").length);
-    const avg = incidents.length ? Math.round(incidents.reduce((sum, i) => sum + i.score, 0) / incidents.length) : 0;
-    requireEl<HTMLElement>("summary-avg-score").textContent = String(avg);
+  function renderSummary(): void {
+    const liveRisk = insights?.liveRiskScore ?? 0;
+    const liveRiskEl = requireEl<HTMLElement>("summary-live-risk");
+    liveRiskEl.textContent = String(liveRisk);
+    liveRiskEl.className = `card-value risk-value level-${insights?.liveRiskLevel ?? "normal"}`;
+    requireEl<HTMLElement>("summary-risk-level").textContent = `${insights?.liveRiskLevel ?? "normal"} · last 15 minutes`;
+    requireEl<HTMLElement>("summary-alerts").textContent = String(insights?.activeAlertCount ?? 0);
+    requireEl<HTMLElement>("summary-correlations").textContent = String(insights?.correlations.length ?? 0);
+    requireEl<HTMLElement>("summary-attack-events").textContent = String(
+      insights?.history.reduce((sum, bucket) => sum + bucket.total, 0) ?? 0,
+    );
   }
 
   function renderStatus(): void {
@@ -89,6 +115,194 @@ const REFRESH_INTERVAL_MS = 5000;
     honeypotToggle.checked = settings.honeypotArmed === true;
     statusLine.textContent = enabled ? "Protection active — monitoring network connections and USB devices." : "Protection paused — nothing is being monitored.";
     statusLine.className = `status-line ${enabled ? "enabled" : "disabled"}`;
+  }
+
+  function openIncident(incidentId: string): void {
+    expandedId = incidentId;
+    window.location.hash = "incidents";
+    render();
+    requireEl<HTMLElement>("incidents").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function renderAlerts(): void {
+    alertsList.innerHTML = "";
+    const alerts = insights?.alerts ?? [];
+    alertsEmpty.hidden = alerts.length !== 0;
+    requireEl<HTMLElement>("alert-count-chip").textContent = `${alerts.length} active`;
+
+    for (const alert of alerts) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = `alert-item alert-${alert.severity}`;
+
+      const score = document.createElement("span");
+      score.className = "alert-score";
+      score.textContent = String(alert.score);
+
+      const copy = document.createElement("span");
+      copy.className = "alert-copy";
+      const heading = document.createElement("strong");
+      heading.textContent = alert.title;
+      const recommendation = document.createElement("span");
+      recommendation.textContent = alert.recommendation;
+      copy.append(heading, recommendation);
+
+      const time = document.createElement("time");
+      time.dateTime = alert.timestamp;
+      time.textContent = formatTime(alert.timestamp);
+      item.append(score, copy, time);
+      item.addEventListener("click", () => openIncident(alert.incidentId));
+      alertsList.appendChild(item);
+    }
+  }
+
+  function renderTimeline(): void {
+    timelineList.innerHTML = "";
+    const recent = [...allIncidents]
+      .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
+      .slice(0, 8);
+    timelineEmpty.hidden = recent.length !== 0;
+
+    for (const incident of recent) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "timeline-item";
+      const marker = document.createElement("span");
+      marker.className = `timeline-marker severity-${incident.severity}`;
+      const copy = document.createElement("span");
+      copy.className = "timeline-copy";
+      const heading = document.createElement("strong");
+      heading.textContent = incident.summary;
+      const meta = document.createElement("span");
+      meta.textContent = `${incident.category.replace(/_/g, " ")} · risk ${incident.score}`;
+      copy.append(heading, meta);
+      const time = document.createElement("time");
+      time.dateTime = incident.timestamp;
+      time.textContent = formatTime(incident.timestamp);
+      item.append(marker, copy, time);
+      item.addEventListener("click", () => openIncident(incident.id));
+      timelineList.appendChild(item);
+    }
+  }
+
+  function renderCorrelations(): void {
+    correlationList.innerHTML = "";
+    const correlations = insights?.correlations ?? [];
+    correlationEmpty.hidden = correlations.length !== 0;
+
+    for (const correlation of correlations) {
+      const item = document.createElement("article");
+      item.className = `correlation-card correlation-${correlation.severity}`;
+      const top = document.createElement("div");
+      top.className = "correlation-top";
+      const heading = document.createElement("h3");
+      heading.textContent = correlation.title;
+      const score = document.createElement("span");
+      score.className = "correlation-score";
+      score.textContent = `Risk ${correlation.score}`;
+      top.append(heading, score);
+      const description = document.createElement("p");
+      description.textContent = correlation.description;
+      const footer = document.createElement("div");
+      footer.className = "correlation-footer";
+      const range = document.createElement("span");
+      range.textContent = `${formatTime(correlation.firstSeen)} → ${formatTime(correlation.lastSeen)}`;
+      const review = document.createElement("button");
+      review.type = "button";
+      review.className = "secondary-button";
+      review.textContent = `Review ${correlation.incidentIds.length} events`;
+      review.addEventListener("click", () => openIncident(correlation.incidentIds[0]!));
+      footer.append(range, review);
+      item.append(top, description, footer);
+      correlationList.appendChild(item);
+    }
+  }
+
+  function renderMetricList(container: HTMLElement, metrics: AnalyticsMetric[], emptyLabel: string): void {
+    container.innerHTML = "";
+    if (metrics.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "metric-empty";
+      empty.textContent = emptyLabel;
+      container.appendChild(empty);
+      return;
+    }
+    const maximum = Math.max(...metrics.map((item) => item.count), 1);
+    for (const item of metrics.slice(0, 7)) {
+      const row = document.createElement("div");
+      row.className = "metric-row";
+      const heading = document.createElement("div");
+      heading.className = "metric-heading";
+      const label = document.createElement("span");
+      label.textContent = item.label;
+      const value = document.createElement("strong");
+      value.textContent = `${item.count} · avg ${item.averageScore}`;
+      heading.append(label, value);
+      const track = document.createElement("div");
+      track.className = "metric-track";
+      const fill = document.createElement("span");
+      fill.style.width = `${Math.max(4, (item.count / maximum) * 100)}%`;
+      track.appendChild(fill);
+      row.append(heading, track);
+      container.appendChild(row);
+    }
+  }
+
+  function renderAnalytics(): void {
+    const analytics = insights?.analytics;
+    requireEl<HTMLElement>("analytics-total").textContent = `${allIncidents.length} events analyzed`;
+    renderMetricList(analyticsCategories, analytics?.categories ?? [], "No category data yet.");
+    renderMetricList(analyticsSeverities, analytics?.severities ?? [], "No severity data yet.");
+    renderMetricList(analyticsMappings, analytics?.mappings ?? [], "No framework-aligned events yet.");
+  }
+
+  function renderHistory(): void {
+    attackHistoryList.innerHTML = "";
+    const history = insights?.history ?? [];
+    historyEmpty.hidden = history.length !== 0;
+    const maximum = Math.max(...history.map((bucket) => bucket.total), 1);
+    for (const bucket of history) {
+      const item = document.createElement("article");
+      item.className = "history-item";
+      const date = document.createElement("time");
+      date.dateTime = bucket.date;
+      date.textContent = new Date(`${bucket.date}T12:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      const bar = document.createElement("div");
+      bar.className = "history-track";
+      const high = document.createElement("span");
+      high.className = "history-high";
+      high.style.width = `${(bucket.high / maximum) * 100}%`;
+      const medium = document.createElement("span");
+      medium.className = "history-medium";
+      medium.style.width = `${(bucket.medium / maximum) * 100}%`;
+      bar.append(high, medium);
+      const count = document.createElement("strong");
+      count.textContent = `${bucket.total} events · peak ${bucket.peakScore}`;
+      item.append(date, bar, count);
+      attackHistoryList.appendChild(item);
+    }
+  }
+
+  function renderFrameworkMappings(mappings: FrameworkMapping[]): HTMLElement | null {
+    if (mappings.length === 0) return null;
+    const section = document.createElement("div");
+    section.className = "framework-mappings";
+    const heading = document.createElement("h4");
+    heading.textContent = "Potential framework mappings";
+    const note = document.createElement("p");
+    note.textContent = "Behavioral alignment only; this does not prove the technique succeeded.";
+    const chips = document.createElement("div");
+    chips.className = "mapping-chips";
+    for (const mapping of mappings) {
+      const link = document.createElement("a");
+      link.href = mapping.url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = `${mapping.framework} · ${mapping.id} · ${mapping.name}`;
+      chips.appendChild(link);
+    }
+    section.append(heading, note, chips);
+    return section;
   }
 
   function renderExplanation(explanation: AIExplanation): HTMLDivElement {
@@ -205,6 +419,9 @@ const REFRESH_INTERVAL_MS = 5000;
       td.appendChild(defender);
     }
 
+    const frameworkMappings = renderFrameworkMappings(insights?.mappingsByIncident[incident.id] ?? []);
+    if (frameworkMappings) td.appendChild(frameworkMappings);
+
     const actionRow = document.createElement("div");
     actionRow.className = "action-row";
 
@@ -311,7 +528,12 @@ const REFRESH_INTERVAL_MS = 5000;
 
   function render(): void {
     const filtered = applyFilters(allIncidents);
-    renderSummary(allIncidents);
+    renderSummary();
+    renderAlerts();
+    renderTimeline();
+    renderCorrelations();
+    renderAnalytics();
+    renderHistory();
     rowsContainer.innerHTML = "";
     emptyState.hidden = filtered.length !== 0;
 
@@ -339,9 +561,14 @@ const REFRESH_INTERVAL_MS = 5000;
   }
 
   async function refresh(): Promise<void> {
-    const [incidentsRes, settingsRes] = await Promise.all([fetch("/api/incidents"), fetch("/api/settings")]);
+    const [incidentsRes, settingsRes, insightsRes] = await Promise.all([
+      fetch("/api/incidents"),
+      fetch("/api/settings"),
+      fetch("/api/insights"),
+    ]);
     allIncidents = await incidentsRes.json();
     settings = await settingsRes.json();
+    insights = await insightsRes.json();
     renderStatus();
     render();
     void refreshAegisHealth();
