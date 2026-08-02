@@ -19,7 +19,7 @@ export function startAegisService(): ChildProcess | null {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   const aegisRoot = path.resolve(moduleDir, "../../aegis");
 
-  child = spawn(jacExecutable(), ["start", "main.jac", "--port", "8012", "--no_client"], {
+  child = spawn(jacExecutable(), ["start", "main.jac", "--port", "8012", "--host", "127.0.0.1", "--no_client"], {
     cwd: aegisRoot,
     env: { ...process.env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8" },
     stdio: "inherit",
