@@ -62,6 +62,10 @@
             <span>AI explanations</span>
             <input type="checkbox" id="ai-toggle" />
           </label>
+          <label class="setting-row">
+            <span>Honeypot armed</span>
+            <input type="checkbox" id="honeypot-toggle" />
+          </label>
           <button id="clear-history" class="danger-button">Clear history</button>
         </div>
       </header>
@@ -124,6 +128,8 @@
               <option value="usb_hid_device">USB keyboard/mouse</option>
               <option value="usb_network_device">USB network adapter</option>
               <option value="usb_other_device">USB other</option>
+              <option value="usb_badusb_keystroke">Honeypot keystroke timing</option>
+              <option value="honeypot_malicious_command">Honeypot malicious command</option>
             </select>
           </label>
           <label>

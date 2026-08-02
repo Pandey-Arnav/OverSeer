@@ -2,12 +2,15 @@ import * as esbuild from "esbuild";
 
 const watch = process.argv.includes("--watch");
 
-// Only the dashboard runs in a real browser and needs bundling — the
-// daemon itself (src/index.ts and everything it imports) runs directly
-// via Node's native TypeScript support, no build step required.
+// Only browser-side entry points need bundling — the daemon itself
+// (src/index.ts and everything it imports) runs directly via Node's
+// native TypeScript support, no build step required.
 const config = {
-  entryPoints: ["src/dashboard/dashboard.ts"],
-  outfile: "public/dashboard.js",
+  entryPoints: [
+    { in: "src/dashboard/dashboard.ts", out: "dashboard" },
+    { in: "src/honeypot/terminal-client.ts", out: "honeypot" },
+  ],
+  outdir: "public",
   bundle: true,
   format: "iife",
   target: "es2022",

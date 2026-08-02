@@ -15,7 +15,8 @@ export type EventCategory =
   | "usb_other_device"
   | "usb_badusb_keystroke"
   | "transaction_tampering"
-  | "suspicious_script";
+  | "suspicious_script"
+  | "honeypot_malicious_command";
 
 export type Severity = "low" | "medium" | "high";
 
@@ -83,9 +84,15 @@ export interface SentinelEvent {
   destinationUrl?: string;
   tamperedFieldNames?: string[];
 
-  // suspicious_script fields — reported by the browser extension
+  // suspicious_script fields — reported by the browser extension.
+  // honeypot_malicious_command events reuse scriptFindings for the
+  // Claude classifier's reasons — both categories mean "a named
+  // content-analysis rule flagged this", just from different sources.
   scriptOrigin?: string;
   scriptFindings?: string[];
+
+  // honeypot_malicious_command fields — see honeypot/command-classifier.ts
+  honeypotCommand?: string;
 }
 
 /** Cross-event state a rule may use, when the caller has it available. */
@@ -116,6 +123,7 @@ export interface Incident {
   pageOrigin: string | null;
   tamperedFieldNames: string[] | null;
   scriptFindings: string[] | null;
+  honeypotCommand: string | null;
   score: number;
   severity: Severity;
   decision: Decision;
@@ -177,4 +185,9 @@ export interface AIExplanation {
 export interface Settings {
   protectionEnabled: boolean;
   aiExplanationsEnabled: boolean;
+  // When true, a newly-attached keyboard-class HID device triggers the
+  // honeypot decoy window to launch and grab focus. Manual toggle rather
+  // than always-on, so your own peripherals reconnecting mid-work never
+  // accidentally hijacks focus. See honeypot/arm-watcher.ts.
+  honeypotArmed: boolean;
 }

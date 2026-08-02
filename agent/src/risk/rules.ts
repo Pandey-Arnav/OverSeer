@@ -166,6 +166,23 @@ function suspiciousScript(event: SentinelEvent): RuleFinding | null {
   };
 }
 
+// BadUSB honeypot, layer 2: a command that passed the keystroke-timing
+// check (looked human enough to type) still gets classified for intent
+// before it's allowed to actually execute (see
+// honeypot/command-classifier.ts). scriptFindings here carries the
+// classifier's stated reasons, not a browser extension's static
+// analysis — same generic "content-analysis flagged X" shape as
+// suspiciousScript above, different source.
+function honeypotMaliciousCommand(event: SentinelEvent): RuleFinding | null {
+  if (event.category !== EVENT_CATEGORIES.HONEYPOT_MALICIOUS_COMMAND) return null;
+  if (!event.scriptFindings || event.scriptFindings.length === 0) return null;
+  return {
+    ruleId: "honeypot-malicious-command",
+    label: `AI classifier flagged this honeypot command as malicious: ${event.scriptFindings.join("; ")}`,
+    points: RULE_WEIGHTS.HONEYPOT_MALICIOUS_COMMAND,
+  };
+}
+
 export const RULES: Rule[] = [
   suspiciousPort,
   unsignedProcess,
@@ -178,4 +195,5 @@ export const RULES: Rule[] = [
   transactionFieldTampering,
   badUsbKeystrokeTiming,
   suspiciousScript,
+  honeypotMaliciousCommand,
 ];

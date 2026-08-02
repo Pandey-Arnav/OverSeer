@@ -74,6 +74,9 @@ function summarize(event: SentinelEvent): string {
     const count = Math.max(1, event.defenderThreatCount ?? 1);
     return `${event.deviceName ?? "USB storage"} — Microsoft Defender detected ${count} threat${count === 1 ? "" : "s"}`;
   }
+  if (event.category === "honeypot_malicious_command") {
+    return `Honeypot command blocked: ${event.honeypotCommand ?? "(unknown command)"}`;
+  }
   return event.deviceName ?? "USB device";
 }
 
@@ -91,6 +94,7 @@ export function buildIncident(event: SentinelEvent, evaluation: RiskEvaluation, 
     pageOrigin: event.pageOrigin ?? null,
     tamperedFieldNames: event.tamperedFieldNames ?? null,
     scriptFindings: event.scriptFindings ?? null,
+    honeypotCommand: event.honeypotCommand ?? null,
     score: evaluation.score,
     severity: evaluation.severity,
     decision: evaluation.decision,

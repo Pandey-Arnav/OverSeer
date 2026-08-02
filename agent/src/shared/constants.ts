@@ -22,6 +22,11 @@ export const RULE_WEIGHTS = {
   TRANSACTION_FIELD_TAMPERING: 95,
   BADUSB_KEYSTROKE_TIMING: 80,
   SUSPICIOUS_SCRIPT_PATTERN: 25, // per matched heuristic; additive across findings
+  // Same rationale as TRANSACTION_FIELD_TAMPERING: a Claude-classified
+  // malicious command in the BadUSB honeypot is a strong, low-ambiguity
+  // signal on its own, and prevention has already happened by construction
+  // (the honeypot never executes a command until this check clears).
+  HONEYPOT_MALICIOUS_COMMAND: 90,
 } as const;
 
 // 0-39 allow | 40-69 allow-and-warn | 70-100 action-recommended
@@ -53,6 +58,7 @@ export const EVENT_CATEGORIES = {
   USB_BADUSB_KEYSTROKE: "usb_badusb_keystroke",
   TRANSACTION_TAMPERING: "transaction_tampering",
   SUSPICIOUS_SCRIPT: "suspicious_script",
+  HONEYPOT_MALICIOUS_COMMAND: "honeypot_malicious_command",
 } as const satisfies Record<string, EventCategory>;
 
 // Which categories have a *safe* remediation action at all. Whether it's
@@ -60,17 +66,22 @@ export const EVENT_CATEGORIES = {
 // isSafeToTerminate() (never offer to kill a root-owned or critical
 // system process) — see remediation/actions.ts.
 //
-// transaction_tampering is included here too, but for a different
-// reason than the other two: there's no *further* remediation to offer
-// (the extension already froze the transaction client-side by the time
-// this incident exists) — including it just makes decideAction() map a
-// high score to "blocked" (meaning "already frozen") rather than
-// "detected_not_blocked" (which would incorrectly imply nothing was done
-// about it). See the Decision type doc comment in shared/types.ts.
+// transaction_tampering, usb_badusb_keystroke, and
+// honeypot_malicious_command are included here too, but for a different
+// reason than the first two: there's no *further* remediation to offer —
+// prevention already happened by the time the incident is logged (the
+// extension already froze the transaction client-side; the honeypot
+// never executes a held command until timing + Claude checks clear).
+// Including them just makes decideAction() map a high score to "blocked"
+// (meaning "already prevented") rather than "detected_not_blocked" (which
+// would incorrectly imply nothing was done about it). See the Decision
+// type doc comment in shared/types.ts.
 export const REMEDIABLE_CATEGORIES: ReadonlySet<EventCategory> = new Set<EventCategory>([
   "network_connection",
   "usb_storage_device",
   "transaction_tampering",
+  "usb_badusb_keystroke",
+  "honeypot_malicious_command",
 ]);
 
 // Ports historically associated with malware C2/backdoors/remote-access
@@ -129,6 +140,7 @@ export const TUNING = {
 export const DEFAULT_SETTINGS: Settings = {
   protectionEnabled: true,
   aiExplanationsEnabled: true,
+  honeypotArmed: false,
 };
 
 export const MAX_STORED_INCIDENTS = 1000;
@@ -139,3 +151,17 @@ export const SERVER_HOST = process.env["SENTINEL_HOST"] || "127.0.0.1";
 // AI explanation upstream — same OpenAI-compatible contract as before.
 export const OPENAI_BASE_URL = process.env["OPENAI_BASE_URL"] || "https://api.openai.com/v1";
 export const OPENAI_MODEL = process.env["OPENAI_MODEL"] || "gpt-4o-mini";
+
+// Hard, non-negotiable backstop: these never execute in the honeypot
+// regardless of what the timing check or Claude classifier conclude.
+// Cheap defense-in-depth against a classifier false negative, since
+// commands that clear both checks now actually run on the real machine.
+export const CATASTROPHIC_COMMAND_PATTERNS: RegExp[] = [
+  // rm -rf (or -fr, -Rf, etc.) targeting root, home, or an unqualified wildcard
+  /\brm\s+-[a-z]*[rf][a-z]*[rf][a-z]*\s+(\/|~|\$HOME|\*)(\s|$)/i,
+  /\bdd\s+.*of=\/dev\/(disk|rdisk)/i, // dd targeting a whole disk device
+  /\bmkfs(\.\w+)?\b/i, // formatting a filesystem
+  /:\(\)\s*\{\s*:\|\s*:\s*&\s*\}\s*;\s*:/, // classic fork bomb
+  /\bdiskutil\s+(erase|zeroDisk|secureErase)/i,
+  /\bcurl\b[^|]*\|\s*(sudo\s+)?(ba)?sh\b/i, // curl-pipe-to-shell
+];

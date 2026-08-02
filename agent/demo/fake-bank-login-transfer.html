@@ -1,0 +1,96 @@
+<!--
+  SIMULATED FIXTURE — Sentinel BadUSB honeypot demo.
+  Represents what a Flipper Zero (or any USB HID "BadUSB") ducky script
+  is trying to reach: log in, then send a wire transfer, with zero user
+  interaction. Everything here is local and fake — no real login, no
+  real account, no network calls, no real money.
+
+  This page is NOT what the honeypot intercepts — it's the "what the
+  attacker wanted" control case. With Sentinel's honeypot disarmed, a
+  BadUSB script that successfully opens a browser can type straight
+  into this page and complete a transfer, uninterrupted. With the
+  honeypot armed (dashboard toggle) and Sentinel Agent running, the
+  BadUSB's keystrokes get captured by the decoy terminal the instant
+  the device attaches — before they ever reach a real browser tab, this
+  page included.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>SecureBank</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 420px; margin: 40px auto; line-height: 1.6; color: #0f1720; background: #f3f4f6; }
+  .banner { background: #dc2626; color: #fff; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; display: inline-block; margin-bottom: 16px; }
+  .bank-card { background: #fff; border-radius: 14px; padding: 28px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+  .bank-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .bank-header .logo { width: 36px; height: 36px; border-radius: 8px; background: #1e3a8a; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+  .bank-header h1 { font-size: 17px; margin: 0; }
+  label { display: block; font-size: 12px; font-weight: 600; color: #4b5563; margin-bottom: 4px; margin-top: 14px; }
+  input { font: inherit; width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 8px; box-sizing: border-box; }
+  .submit-btn { width: 100%; margin-top: 20px; padding: 12px; border: none; border-radius: 8px; background: #1e3a8a; color: #fff; font-weight: 600; cursor: pointer; }
+  #log { background: #111827; color: #d1d5db; font-family: monospace; font-size: 12px; padding: 12px; border-radius: 8px; min-height: 20px; white-space: pre-wrap; margin-top: 16px; }
+  .hint { font-size: 12px; color: #6b7280; margin-top: 4px; }
+  .prereqs { font-size: 12px; color: #4b5563; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+  <span class="banner">SENTINEL DEMO — SIMULATED BADUSB TARGET (SAFE FIXTURE)</span>
+
+  <div class="prereqs">
+    This page is the fake target a BadUSB script is trying to reach — not the honeypot itself. Arm the honeypot from the Sentinel dashboard (<code>localhost:4100</code>) <em>before</em> plugging in the device to see the script's keystrokes get captured by the decoy terminal instead of ever reaching this login form.
+  </div>
+
+  <div class="bank-card">
+    <div class="bank-header">
+      <span class="logo">SB</span>
+      <h1>SecureBank</h1>
+    </div>
+
+    <form id="login-form">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" autocomplete="off" />
+
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" autocomplete="off" />
+
+      <button type="submit" class="submit-btn">Log in</button>
+    </form>
+
+    <form id="transfer-form" class="hidden">
+      <label for="recipientAccount">Recipient account number (IBAN)</label>
+      <input type="text" id="recipientAccount" name="recipientAccount" autocomplete="off" placeholder="e.g. DE89 3704 0044 0532 0130 00" />
+
+      <label for="amount">Amount (USD)</label>
+      <input type="text" id="amount" name="amount" autocomplete="off" placeholder="e.g. 5000.00" />
+
+      <button type="submit" class="submit-btn">Send transfer</button>
+      <p class="hint">This is where an unattended BadUSB script would complete a fraudulent wire transfer with no human ever looking at the screen.</p>
+    </form>
+
+    <div id="log">Waiting for input…</div>
+  </div>
+
+  <script>
+    const loginForm = document.getElementById("login-form");
+    const transferForm = document.getElementById("transfer-form");
+    const log = document.getElementById("log");
+
+    loginForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const username = document.getElementById("username").value;
+      log.textContent = `Logged in as "${username || "(empty)"}" (simulated — nothing sent anywhere).`;
+      loginForm.classList.add("hidden");
+      transferForm.classList.remove("hidden");
+    });
+
+    transferForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const account = document.getElementById("recipientAccount").value;
+      const amount = document.getElementById("amount").value;
+      log.textContent = `SIMULATED TRANSFER COMPLETE: $${amount || "0.00"} to ${account || "(empty)"}.\nNo real money moved — this is a local, offline fixture.`;
+    });
+  </script>
+</body>
+</html>

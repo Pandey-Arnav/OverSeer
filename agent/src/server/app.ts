@@ -9,6 +9,7 @@ import { clearIncidents, getIncidents, getSettings, updateIncident, updateSettin
 import { generateExplanation } from "./ai-explanation.ts";
 import { ejectUsbDevice, terminateProcess } from "../remediation/actions.ts";
 import { evaluateIncidentWithAegis, getAegisHealth } from "../aegis/client.ts";
+import { handleHoneypotCommand } from "../honeypot/session.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -61,7 +62,27 @@ export function createApp() {
     const patch: Record<string, unknown> = {};
     if (typeof req.body.protectionEnabled === "boolean") patch["protectionEnabled"] = req.body.protectionEnabled;
     if (typeof req.body.aiExplanationsEnabled === "boolean") patch["aiExplanationsEnabled"] = req.body.aiExplanationsEnabled;
+    if (typeof req.body.honeypotArmed === "boolean") patch["honeypotArmed"] = req.body.honeypotArmed;
     res.json(await updateSettings(patch));
+  });
+
+  app.post("/api/honeypot/command", async (req, res, next) => {
+    try {
+      const commandText = req.body.commandText;
+      const keyTimestamps = req.body.keyTimestamps;
+      if (typeof commandText !== "string" || !commandText.trim()) {
+        res.status(400).json({ error: "commandText is required" });
+        return;
+      }
+      if (!Array.isArray(keyTimestamps) || !keyTimestamps.every((t) => typeof t === "number")) {
+        res.status(400).json({ error: "keyTimestamps must be an array of numbers" });
+        return;
+      }
+      const result = await handleHoneypotCommand(commandText, keyTimestamps);
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
   });
 
   app.post("/api/incidents/:id/explain", async (req, res, next) => {
@@ -113,6 +134,7 @@ export function createApp() {
   });
 
   app.use(express.static(path.join(__dirname, "../../public")));
+  app.use("/demo", express.static(path.join(__dirname, "../../demo")));
 
   app.use((req, res) => {
     res.status(404).json({ error: "Not found" });

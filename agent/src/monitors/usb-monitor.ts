@@ -110,7 +110,7 @@ async function listWindowsUsbDevices(): Promise<UsbDevice[]> {
   }
 }
 
-async function listUsbDevices(): Promise<UsbDevice[]> {
+export async function listUsbDevices(): Promise<UsbDevice[]> {
   if (process.platform === "win32") return listWindowsUsbDevices();
   if (process.platform === "darwin") return listMacUsbDevices();
   return [];

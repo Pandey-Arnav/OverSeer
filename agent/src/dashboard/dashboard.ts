@@ -17,6 +17,7 @@ const REFRESH_INTERVAL_MS = 5000;
   const statusLine = requireEl<HTMLElement>("status-line");
   const protectionToggle = requireEl<HTMLInputElement>("protection-toggle");
   const aiToggle = requireEl<HTMLInputElement>("ai-toggle");
+  const honeypotToggle = requireEl<HTMLInputElement>("honeypot-toggle");
   const clearHistoryBtn = requireEl<HTMLButtonElement>("clear-history");
   const aegisStatus = requireEl<HTMLElement>("aegis-status");
   const aegisIndicator = requireEl<HTMLElement>("aegis-indicator");
@@ -34,7 +35,7 @@ const REFRESH_INTERVAL_MS = 5000;
   const confirmNoBtn = requireEl<HTMLButtonElement>("confirm-no");
 
   let allIncidents: Incident[] = [];
-  let settings: Settings = { protectionEnabled: true, aiExplanationsEnabled: true };
+  let settings: Settings = { protectionEnabled: true, aiExplanationsEnabled: true, honeypotArmed: false };
   let expandedId: string | null = null;
   let pendingConfirmAction: (() => Promise<void>) | null = null;
 
@@ -85,6 +86,7 @@ const REFRESH_INTERVAL_MS = 5000;
     const enabled = settings.protectionEnabled !== false;
     protectionToggle.checked = enabled;
     aiToggle.checked = settings.aiExplanationsEnabled !== false;
+    honeypotToggle.checked = settings.honeypotArmed === true;
     statusLine.textContent = enabled ? "Protection active — monitoring network connections and USB devices." : "Protection paused — nothing is being monitored.";
     statusLine.className = `status-line ${enabled ? "enabled" : "disabled"}`;
   }
@@ -171,6 +173,7 @@ const REFRESH_INTERVAL_MS = 5000;
     const metaParts = [
       incident.processName ? `Process: ${incident.processName}` : null,
       incident.processPath ? `Path: ${incident.processPath}` : null,
+      incident.honeypotCommand ? `Command: ${incident.honeypotCommand}` : null,
     ].filter(Boolean);
     meta.textContent = metaParts.join(" · ") || "No additional process metadata.";
 
@@ -362,6 +365,15 @@ const REFRESH_INTERVAL_MS = 5000;
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ aiExplanationsEnabled: aiToggle.checked }),
     })).json();
+  });
+
+  honeypotToggle.addEventListener("change", async () => {
+    settings = await (await fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ honeypotArmed: honeypotToggle.checked }),
+    })).json();
+    renderStatus();
   });
 
   clearHistoryBtn.addEventListener("click", () => {

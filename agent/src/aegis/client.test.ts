@@ -17,6 +17,7 @@ function usbIncident(): Incident {
     pageOrigin: null,
     tamperedFieldNames: null,
     scriptFindings: null,
+    honeypotCommand: null,
     score: 100,
     severity: "high",
     decision: "blocked",
