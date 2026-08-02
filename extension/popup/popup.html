@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Sentinel</title>
+<link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="brand">
+      <span class="brand-icon">🛡️</span>
+      <span class="brand-name">Sentinel</span>
+    </div>
+    <label class="switch" title="Protection enabled/disabled">
+      <input type="checkbox" id="protection-toggle" />
+      <span class="switch-track"><span class="switch-thumb"></span></span>
+    </label>
+  </header>
+
+  <p id="status-line" class="status-line">Loading…</p>
+
+  <section class="counts">
+    <div class="count-card">
+      <span class="count-value" id="count-today">0</span>
+      <span class="count-label">Today</span>
+    </div>
+    <div class="count-card">
+      <span class="count-value count-blocked" id="count-blocked">0</span>
+      <span class="count-label">Blocked</span>
+    </div>
+    <div class="count-card">
+      <span class="count-value count-warned" id="count-warned">0</span>
+      <span class="count-label">Warned</span>
+    </div>
+  </section>
+
+  <section class="recent">
+    <h2>Recent incidents</h2>
+    <ul id="recent-list" class="recent-list">
+      <li class="empty">No incidents yet</li>
+    </ul>
+  </section>
+
+  <label class="setting-row">
+    <span>AI explanations</span>
+    <input type="checkbox" id="ai-toggle" />
+  </label>
+
+  <button id="open-dashboard" class="primary-button">Open dashboard</button>
+
+  <script src="../shared/constants.js"></script>
+  <script src="../shared/utils.js"></script>
+  <script src="../storage/incidents.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

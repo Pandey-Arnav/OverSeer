@@ -1,0 +1,55 @@
+<!--
+  SIMULATED FIXTURE — Sentinel demo
+  A user click immediately followed by several rapid history.pushState
+  calls, simulating a "click → bounce through several intermediate
+  redirects → final destination" pattern. Everything stays on this page
+  (pushState doesn't actually navigate anywhere) — nothing leaves this
+  page or contacts a real destination.
+  Expected: redirect-after-click AND multiple-redirects both fire,
+  landing in the medium/high range. Always "detected_not_blocked" (or
+  logged, not prevented) — MV3 has no reliable way to cancel this kind of
+  in-page navigation, and Sentinel doesn't pretend otherwise.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Sentinel Demo — Redirect Chain</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 560px; margin: 60px auto; line-height: 1.6; color: #0f1720; }
+  .banner { background: #f59e0b; color: #111; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; display: inline-block; margin-bottom: 16px; }
+  button { font: inherit; padding: 10px 16px; border: none; border-radius: 6px; background: #0f1720; color: #fff; cursor: pointer; }
+  #log { background: #111827; color: #d1d5db; font-family: monospace; font-size: 12px; padding: 12px; border-radius: 8px; min-height: 60px; white-space: pre-wrap; margin-top: 16px; }
+</style>
+</head>
+<body>
+  <span class="banner">SENTINEL DEMO — SIMULATED RAPID REDIRECT CHAIN</span>
+  <h1>Redirect Chain Test</h1>
+  <p><a href="safe-test.html">← back to safe page</a></p>
+  <p>Clicking the button below simulates a user click immediately followed
+     by several rapid client-side "redirects" (history.pushState). Nothing
+     actually navigates away from this page.</p>
+
+  <button id="btn-redirect-chain">Simulate click + rapid redirects</button>
+
+  <div id="log">(nothing yet)</div>
+
+  <script>
+    const log = document.getElementById("log");
+    function appendLog(line) {
+      log.textContent = `${new Date().toLocaleTimeString()}  ${line}\n` + log.textContent;
+    }
+
+    document.getElementById("btn-redirect-chain").addEventListener("click", () => {
+      appendLog("user click recorded");
+      const hops = ["/demo/step-1", "/demo/step-2", "/demo/step-3", "/demo/final-destination"];
+      hops.forEach((path, i) => {
+        setTimeout(() => {
+          history.pushState({}, "", path);
+          appendLog(`pushState -> ${path}`);
+        }, i * 150);
+      });
+    });
+  </script>
+</body>
+</html>

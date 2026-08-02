@@ -1,0 +1,9 @@
+{
+  "name": "sentinel-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sentinel Chrome MV3 extension — no build step, vanilla JS.",
+  "scripts": {
+    "test": "node --test risk/engine.test.js"
+  }
+}
