@@ -6,7 +6,14 @@
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
-    "dev": "node --watch src/app.js"
+    "dev": "node --watch src/app.js",
+    "test": "node --test",
+    "aegis": "cd aegis && jac start main.jac --port 8012 --no_client",
+    "start:full": "node src/full-stack.js",
+    "agent:usb": "node ../agent/windows/usb-agent.js",
+    "agent:usb:once": "node ../agent/windows/usb-agent.js --once",
+    "test:agent": "node --test ../agent/windows/device-discovery.test.js ../agent/windows/volume-inventory.test.js ../agent/windows/usb-agent.test.js",
+    "test:aegis": "cd aegis && jac test tests/aegis_tests.jac"
   },
   "dependencies": {
     "cors": "^2.8.5",

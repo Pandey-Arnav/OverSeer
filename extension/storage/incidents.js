@@ -8,9 +8,27 @@
  */
 (function (global) {
   const { STORAGE_KEYS, MAX_STORED_INCIDENTS, DEFAULT_SETTINGS } = global.Sentinel;
+  const hasChromeStorage = typeof chrome !== "undefined" && chrome.storage?.local;
+
+  async function storageGet(key) {
+    if (hasChromeStorage) return chrome.storage.local.get(key);
+    try {
+      const value = JSON.parse(global.localStorage.getItem(key));
+      return { [key]: value };
+    } catch {
+      return {};
+    }
+  }
+
+  async function storageSet(values) {
+    if (hasChromeStorage) return chrome.storage.local.set(values);
+    for (const [key, value] of Object.entries(values)) {
+      global.localStorage.setItem(key, JSON.stringify(value));
+    }
+  }
 
   async function getIncidents() {
-    const result = await chrome.storage.local.get(STORAGE_KEYS.INCIDENTS);
+    const result = await storageGet(STORAGE_KEYS.INCIDENTS);
     return Array.isArray(result[STORAGE_KEYS.INCIDENTS]) ? result[STORAGE_KEYS.INCIDENTS] : [];
   }
 
@@ -19,7 +37,7 @@
     const incidents = await getIncidents();
     incidents.unshift(incident);
     if (incidents.length > MAX_STORED_INCIDENTS) incidents.length = MAX_STORED_INCIDENTS;
-    await chrome.storage.local.set({ [STORAGE_KEYS.INCIDENTS]: incidents });
+    await storageSet({ [STORAGE_KEYS.INCIDENTS]: incidents });
     return incident;
   }
 
@@ -28,23 +46,23 @@
     const idx = incidents.findIndex((i) => i.id === id);
     if (idx === -1) return null;
     incidents[idx] = { ...incidents[idx], ...patch };
-    await chrome.storage.local.set({ [STORAGE_KEYS.INCIDENTS]: incidents });
+    await storageSet({ [STORAGE_KEYS.INCIDENTS]: incidents });
     return incidents[idx];
   }
 
   async function clearIncidents() {
-    await chrome.storage.local.set({ [STORAGE_KEYS.INCIDENTS]: [] });
+    await storageSet({ [STORAGE_KEYS.INCIDENTS]: [] });
   }
 
   async function getSettings() {
-    const result = await chrome.storage.local.get(STORAGE_KEYS.SETTINGS);
+    const result = await storageGet(STORAGE_KEYS.SETTINGS);
     return { ...DEFAULT_SETTINGS, ...(result[STORAGE_KEYS.SETTINGS] || {}) };
   }
 
   async function updateSettings(patch) {
     const current = await getSettings();
     const next = { ...current, ...patch };
-    await chrome.storage.local.set({ [STORAGE_KEYS.SETTINGS]: next });
+    await storageSet({ [STORAGE_KEYS.SETTINGS]: next });
     return next;
   }
 

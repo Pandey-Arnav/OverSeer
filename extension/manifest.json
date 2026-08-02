@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Sentinel — Runtime Threat Guardian",
+  "name": "GhostShield — Sentinel + AEGIS",
   "version": "0.1.0",
-  "description": "Detects suspicious webpage behavior in real time, scores the risk locally, and blocks or warns before harm happens.",
+  "description": "Sentinel monitors browser and USB risk while AEGIS ForkGuard evaluates safer counterfactual actions.",
   "icons": {
     "16": "public/icons/icon16.png",
     "48": "public/icons/icon48.png",
@@ -15,7 +15,7 @@
       "48": "public/icons/icon48.png",
       "128": "public/icons/icon128.png"
     },
-    "default_title": "Sentinel — click for today's protection summary"
+    "default_title": "GhostShield — Sentinel runtime protection with AEGIS review"
   },
   "background": {
     "service_worker": "background/service-worker.js"

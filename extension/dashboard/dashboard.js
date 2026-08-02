@@ -9,6 +9,8 @@
   const confirmOverlay = document.getElementById("confirm-overlay");
   const confirmClearBtn = document.getElementById("confirm-clear");
   const cancelClearBtn = document.getElementById("cancel-clear");
+  const aegisStatus = document.getElementById("aegis-status");
+  const agentStatus = document.getElementById("agent-status");
 
   let allIncidents = [];
   let settings = { aiExplanationsEnabled: true };
@@ -34,6 +36,23 @@
     });
   }
 
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function setRuntimeStatus(element, label, value) {
+    const target = element?.querySelector("span:last-child");
+    if (!target) return;
+    const strong = document.createElement("strong");
+    strong.textContent = label;
+    target.replaceChildren(strong, document.createTextNode(` ${value}`));
+  }
+
   function applyFilters(incidents) {
     const severity = filterSeverity.value;
     const decision = filterDecision.value;
@@ -45,7 +64,8 @@
       if (decision && incident.decision !== decision) return false;
       if (eventType && incident.eventType !== eventType) return false;
       if (domain) {
-        const haystack = `${incident.pageOrigin || ""} ${incident.destinationOrigin || ""}`.toLowerCase();
+        const hardware = incident.hardware || {};
+        const haystack = `${incident.pageOrigin || ""} ${incident.destinationOrigin || ""} ${hardware.device?.displayName || ""} ${hardware.device?.driveLetter || ""}`.toLowerCase();
         if (!haystack.includes(domain)) return false;
       }
       return true;
@@ -70,18 +90,24 @@
 
     const meta = document.createElement("div");
     meta.className = "detail-meta";
-    meta.textContent = `Tab ${incident.tabId ?? "—"} · Method ${incident.method || "—"} · Payload ~${
-      incident.payloadSize != null ? incident.payloadSize + " bytes" : "unknown"
-    }`;
+    if (incident.source === "hardware") {
+      const hardware = incident.hardware || {};
+      meta.textContent = `${incident.simulated ? "Simulated USB test" : "Windows USB agent"} · ${hardware.device?.displayName || "USB volume"} · ${hardware.device?.driveLetter || "drive unavailable"} · ${hardware.inventory?.totalFiles ?? 0} files inventoried`;
+    } else {
+      meta.textContent = `Tab ${incident.tabId ?? "—"} · Method ${incident.method || "—"} · Payload ~${
+        incident.payloadSize != null ? incident.payloadSize + " bytes" : "unknown"
+      }`;
+    }
 
+    const reasons = Array.isArray(incident.reasons) ? incident.reasons : [];
     const reasonsList = document.createElement("ul");
     reasonsList.className = "detail-reasons";
-    if (incident.reasons.length === 0) {
+    if (reasons.length === 0) {
       const li = document.createElement("li");
       li.textContent = "No individual rules triggered.";
       reasonsList.appendChild(li);
     } else {
-      for (const reason of incident.reasons) {
+      for (const reason of reasons) {
         const li = document.createElement("li");
         li.textContent = `${reason.label} (+${reason.points})`;
         reasonsList.appendChild(li);
@@ -90,7 +116,13 @@
 
     td.append(meta, reasonsList);
 
-    if (incident.explanation) {
+    if (incident.source === "hardware") {
+      td.appendChild(renderHardwareDetails(incident));
+      const note = document.createElement("p");
+      note.className = "detail-meta";
+      note.textContent = "Privacy boundary: GhostShield stores counts and verdicts only. File contents, filenames, and USB serial numbers are not sent to the dashboard or AEGIS.";
+      td.appendChild(note);
+    } else if (incident.explanation) {
       td.appendChild(renderExplanation(incident.explanation));
     } else if (settings.aiExplanationsEnabled) {
       const button = document.createElement("button");
@@ -122,8 +154,138 @@
       td.appendChild(note);
     }
 
+    td.appendChild(buildForkGuardControl(incident));
     tr.appendChild(td);
     return tr;
+  }
+
+  function renderHardwareDetails(incident) {
+    const hardware = incident.hardware || {};
+    const inventory = hardware.inventory || {};
+    const defender = hardware.defender || {};
+    const panel = document.createElement("div");
+    panel.className = "hardware-details";
+    const items = [
+      ["Scanner", defender.available ? "Microsoft Defender" : "Unavailable"],
+      ["Scan", defender.completed ? "Completed" : "Incomplete"],
+      ["Threats", String(defender.threatCount || 0)],
+      ["Executables", String(inventory.executableCount || 0)],
+      ["Scripts", String(inventory.scriptCount || 0)],
+      ["Shortcuts", String(inventory.shortcutCount || 0)],
+      ["Archives", String(inventory.archiveCount || 0)],
+      ["File system", hardware.device?.fileSystem || "Unknown"],
+    ];
+    for (const [label, value] of items) {
+      const item = document.createElement("div");
+      const key = document.createElement("span");
+      key.textContent = label;
+      const result = document.createElement("strong");
+      result.textContent = value;
+      item.append(key, result);
+      panel.appendChild(item);
+    }
+    return panel;
+  }
+
+  function buildForkGuardControl(incident) {
+    const section = document.createElement("section");
+    section.className = "forkguard-section";
+
+    if (incident.forkguardAnalysis) {
+      section.appendChild(renderForkGuard(incident.forkguardAnalysis));
+      return section;
+    }
+
+    const heading = document.createElement("div");
+    heading.className = "forkguard-heading";
+
+    const copy = document.createElement("div");
+    const eyebrow = document.createElement("span");
+    eyebrow.className = "forkguard-eyebrow";
+    eyebrow.textContent = "AEGIS FORKGUARD";
+    const title = document.createElement("strong");
+    title.textContent = "Evaluate four safer futures";
+    const description = document.createElement("p");
+    description.textContent = "Runs a Jac decision graph over this sanitized Sentinel incident. No page content or credentials are sent.";
+    copy.append(eyebrow, title, description);
+
+    const button = document.createElement("button");
+    button.className = "forkguard-button";
+    button.type = "button";
+    button.textContent = "Run AEGIS review";
+    button.addEventListener("click", async (event) => {
+      event.stopPropagation();
+      button.disabled = true;
+      button.textContent = "Forking futures...";
+      try {
+        const analysis = await requestForkGuard(incident);
+        incident.forkguardAnalysis = analysis;
+        await Sentinel.updateIncident(incident.id, { forkguardAnalysis: analysis });
+        section.replaceChildren(renderForkGuard(analysis));
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = "Retry AEGIS review";
+        const errorMessage = document.createElement("p");
+        errorMessage.className = "forkguard-error";
+        errorMessage.textContent = error.message;
+        section.appendChild(errorMessage);
+      }
+    });
+
+    heading.append(copy, button);
+    section.appendChild(heading);
+    return section;
+  }
+
+  function renderForkGuard(analysis) {
+    const container = document.createElement("div");
+    container.className = "forkguard-result";
+    const selectedBranch = analysis?.decision?.selectedBranch || "UNKNOWN";
+
+    const summary = document.createElement("div");
+    summary.className = "forkguard-result-summary";
+
+    const title = document.createElement("div");
+    const eyebrow = document.createElement("span");
+    eyebrow.className = "forkguard-eyebrow";
+    eyebrow.textContent = "AEGIS DECISION";
+    const selected = document.createElement("strong");
+    selected.textContent = selectedBranch;
+    const status = document.createElement("span");
+    status.className = "forkguard-status";
+    status.textContent = String(analysis?.decision?.status || "REVIEW_COMPLETE").replaceAll("_", " ");
+    title.append(eyebrow, selected, status);
+
+    const summaryText = document.createElement("p");
+    summaryText.textContent = analysis?.decision?.summary || "AEGIS completed its counterfactual review.";
+    summary.append(title, summaryText);
+
+    const branches = document.createElement("div");
+    branches.className = "forkguard-branches";
+    for (const branch of Array.isArray(analysis?.branches) ? analysis.branches : []) {
+      const card = document.createElement("article");
+      card.className = "forkguard-branch";
+      if (branch.name === selectedBranch) card.classList.add("selected");
+      if (branch.valid === false) card.classList.add("rejected");
+
+      const branchName = document.createElement("strong");
+      branchName.textContent = branch.name;
+      const branchTitle = document.createElement("span");
+      branchTitle.textContent = branch.title;
+      const scores = document.createElement("small");
+      scores.textContent = `Risk ${branch.riskScore} / Utility ${branch.utilityScore}`;
+      const verdict = document.createElement("em");
+      verdict.textContent = String(branch.verdict || "PENDING").replaceAll("_", " ");
+      card.append(branchName, branchTitle, scores, verdict);
+      branches.appendChild(card);
+    }
+
+    const footnote = document.createElement("p");
+    footnote.className = "forkguard-footnote";
+    footnote.textContent = `Jac graph ${analysis?.graph?.nodes?.length || 0} nodes / ${analysis?.graph?.edges?.length || 0} edges - simulated counterfactual review only.`;
+
+    container.append(summary, branches, footnote);
+    return container;
   }
 
   function renderExplanation(explanation) {
@@ -156,6 +318,77 @@
     return response.json();
   }
 
+  async function requestForkGuard(incident) {
+    const response = await fetch(`${Sentinel.BACKEND_URL}/api/forkguard/evaluate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        incidentId: incident.id,
+        eventType: incident.eventType,
+        pageOrigin: incident.pageOrigin,
+        destinationOrigin: incident.destinationOrigin,
+        score: incident.score,
+        decision: incident.decision,
+        reasons: Array.isArray(incident.reasons) ? incident.reasons : [],
+      }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || `ForkGuard server responded ${response.status}`);
+    return result;
+  }
+
+  async function refreshAegisStatus() {
+    if (!aegisStatus) return;
+    try {
+      const response = await fetch(`${Sentinel.BACKEND_URL}/api/forkguard/health`);
+      if (!response.ok) throw new Error("offline");
+      aegisStatus.className = "aegis-status online";
+      aegisStatus.querySelector("span:last-child").innerHTML = "<strong>AEGIS</strong> online";
+    } catch {
+      aegisStatus.className = "aegis-status offline";
+      aegisStatus.querySelector("span:last-child").innerHTML = "<strong>AEGIS</strong> offline";
+    }
+  }
+
+  async function refreshAgentStatus() {
+    if (!agentStatus) return;
+    try {
+      const response = await fetch(`${Sentinel.BACKEND_URL}/api/hardware/health`);
+      if (!response.ok) throw new Error("offline");
+      const health = await response.json();
+      const onlineAgent = Array.isArray(health.agents) ? health.agents.find((agent) => agent.online) : null;
+      if (!health.online || !onlineAgent) throw new Error("offline");
+      agentStatus.className = "aegis-status online";
+      setRuntimeStatus(agentStatus, "USB AGENT", onlineAgent.status || "online");
+    } catch {
+      agentStatus.className = "aegis-status offline";
+      setRuntimeStatus(agentStatus, "USB AGENT", "offline");
+    }
+  }
+
+  async function fetchHardwareIncidents() {
+    try {
+      const response = await fetch(`${Sentinel.BACKEND_URL}/api/hardware/incidents?limit=500`);
+      if (!response.ok) throw new Error("offline");
+      const payload = await response.json();
+      return Array.isArray(payload.incidents) ? payload.incidents : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function sourceLabel(incident) {
+    return incident.source === "hardware"
+      ? incident.simulated ? "Simulated USB test" : "Windows USB agent"
+      : hostnameOf(incident.pageUrl);
+  }
+
+  function targetLabel(incident) {
+    return incident.source === "hardware"
+      ? incident.hardware?.device?.displayName || "USB volume"
+      : hostnameOf(incident.destinationUrl);
+  }
+
   function render() {
     const filtered = applyFilters(allIncidents);
     renderSummary(allIncidents);
@@ -167,8 +400,8 @@
       tr.className = "incident-row";
       tr.innerHTML = `
         <td>${formatTime(incident.timestamp)}</td>
-        <td>${hostnameOf(incident.pageUrl)}</td>
-        <td>${hostnameOf(incident.destinationUrl)}</td>
+        <td>${escapeHtml(sourceLabel(incident))}</td>
+        <td>${escapeHtml(targetLabel(incident))}</td>
         <td>${incident.eventType.replace(/_/g, " ")}</td>
         <td><span class="severity-dot severity-${incident.severity}"></span>${incident.score}</td>
         <td><span class="badge badge-${incident.decision}">${incident.decision.replace(/_/g, " ")}</span></td>
@@ -187,7 +420,15 @@
   }
 
   async function refresh() {
-    [allIncidents, settings] = await Promise.all([Sentinel.getIncidents(), Sentinel.getSettings()]);
+    const [browserIncidents, hardwareIncidents, currentSettings] = await Promise.all([
+      Sentinel.getIncidents(),
+      fetchHardwareIncidents(),
+      Sentinel.getSettings(),
+    ]);
+    settings = currentSettings;
+    allIncidents = [...browserIncidents, ...hardwareIncidents]
+      .filter((incident, index, incidents) => incidents.findIndex((candidate) => candidate.id === incident.id) === index)
+      .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
     render();
   }
 
@@ -202,10 +443,18 @@
   });
   confirmClearBtn.addEventListener("click", async () => {
     await Sentinel.clearIncidents();
+    await fetch(`${Sentinel.BACKEND_URL}/api/hardware/incidents`, { method: "DELETE" }).catch(() => null);
     confirmOverlay.hidden = true;
     expandedId = null;
     await refresh();
   });
 
-  refresh();
+  void refresh();
+  void refreshAegisStatus();
+  void refreshAgentStatus();
+  setInterval(() => {
+    void refresh();
+    void refreshAegisStatus();
+    void refreshAgentStatus();
+  }, 5000);
 })();

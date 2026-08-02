@@ -2,17 +2,36 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Sentinel Dashboard</title>
+<title>GhostShield - Sentinel + AEGIS</title>
 <link rel="stylesheet" href="dashboard.css" />
 </head>
 <body>
   <header class="page-header">
     <div class="brand">
       <span class="brand-icon">🛡️</span>
-      <h1>Sentinel Dashboard</h1>
+      <div>
+        <span class="brand-kicker">Sentinel runtime defense</span>
+        <h1>GhostShield Command Center</h1>
+      </div>
     </div>
-    <button id="clear-history" class="danger-button">Clear history</button>
+    <div class="header-actions">
+      <div id="agent-status" class="aegis-status checking">
+        <span class="aegis-dot"></span>
+        <span><strong>USB AGENT</strong> checking</span>
+      </div>
+      <div id="aegis-status" class="aegis-status checking">
+        <span class="aegis-dot"></span>
+        <span><strong>AEGIS</strong> checking</span>
+      </div>
+      <button id="clear-history" class="danger-button">Clear history</button>
+    </div>
   </header>
+
+  <section class="mission-strip">
+    <span>RUNTIME SIGNAL</span>
+    <strong>Sentinel watches the browser and removable hardware. AEGIS evaluates the safer future.</strong>
+    <span>LOCAL-FIRST</span>
+  </section>
 
   <section class="summary-cards">
     <div class="card">
@@ -65,11 +84,12 @@
         <option value="history_change">history change</option>
         <option value="clipboard_access">clipboard</option>
         <option value="hidden_iframe">hidden iframe</option>
+        <option value="usb_scan_result">USB scan</option>
       </select>
     </label>
     <label class="filter-domain">
-      Domain contains
-      <input type="text" id="filter-domain" placeholder="example.com" />
+      Domain or device contains
+      <input type="text" id="filter-domain" placeholder="example.com or USB label" />
     </label>
   </section>
 
@@ -77,8 +97,8 @@
     <thead>
       <tr>
         <th>Time</th>
-        <th>Page</th>
-        <th>Destination</th>
+        <th>Source</th>
+        <th>Target</th>
         <th>Event</th>
         <th>Score</th>
         <th>Decision</th>
@@ -91,7 +111,7 @@
 
   <div id="confirm-overlay" class="confirm-overlay" hidden>
     <div class="confirm-box">
-      <p>Clear all stored incidents? This cannot be undone.</p>
+      <p>Clear all stored browser and USB incidents? This cannot be undone.</p>
       <div class="confirm-actions">
         <button id="confirm-clear" class="danger-button">Clear all</button>
         <button id="cancel-clear" class="secondary-button">Cancel</button>

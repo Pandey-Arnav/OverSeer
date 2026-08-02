@@ -1,16 +1,111 @@
-# Sentinel — Runtime Threat Guardian
+# GhostShield — Sentinel + AEGIS ForkGuard
 
-A Chrome MV3 extension that watches how a webpage *behaves* after it
-loads — not just what domain it's on — scores that behavior against a
-transparent, local rule engine, and blocks or warns before the risky
-action completes wherever that's technically possible. An optional local
-server can turn a logged incident's rule findings into a plain-English
-explanation.
+A Chrome MV3 extension and Windows background agent that watch risky browser
+behavior and newly mounted USB storage. Sentinel scores sanitized observations
+against transparent local rules, Microsoft Defender handles USB malware scans,
+and AEGIS evaluates safer counterfactual responses. Browser actions are blocked
+where Manifest V3 honestly allows it; high-risk hardware findings are contained
+and reported without claiming kernel-level prevention.
 
 Built to a strict 1–2 day hackathon scope: **a reliable end-to-end demo
 over broad feature coverage.** Every blocking claim in this project was
 checked against what Manifest V3 actually allows before being built —
 see [MV3 limitations](#manifest-v3-limitations).
+
+## AEGIS integration
+
+GhostShield keeps Sentinel's existing local MV3 detection and enforcement
+loop unchanged. AEGIS ForkGuard is an additive Jac service that reviews a
+stored, sanitized incident after detection and evaluates four counterfactual
+futures: **ALLOW**, **WARN**, **BLOCK**, and **CONTAIN**.
+
+- Sentinel remains the source of truth for what the browser can actually block.
+- AEGIS never receives raw form values, passwords, cookies, request bodies, or
+  clipboard content.
+- The Express API derives technical blockability server-side and proxies only
+  the approved incident metadata to Jac.
+- The dashboard stores the returned decision graph with the local incident so
+  the review remains visible after refresh.
+- If Jac is offline, Sentinel continues protecting the browser and the dashboard
+  reports AEGIS as offline instead of inventing a result.
+
+Run the integrated backend from `server/`:
+
+```sh
+npm install
+npm run start:full
+```
+
+This starts Sentinel on `http://127.0.0.1:4000` and AEGIS ForkGuard on
+`http://127.0.0.1:8012`. Jac 0.16.7 or newer must be available on `PATH`.
+
+## Windows USB background protection
+
+GhostShield includes a Windows-first, user-mode USB monitoring MVP in
+`agent/windows/`. It runs alongside Sentinel and AEGIS, notices newly mounted
+USB storage, creates a bounded inventory, requests a Microsoft Defender custom
+scan for that drive, and sends only sanitized counts and verdicts to Sentinel.
+Sentinel derives the risk score server-side and AEGIS evaluates the resulting
+**ALLOW**, **WARN**, **BLOCK**, and **CONTAIN** futures.
+
+Privacy and safety boundaries:
+
+- File contents, filenames, raw paths, USB serial numbers, credentials, and
+  document contents are never submitted to the Express API or Jac.
+- Hardware identities are SHA-256 hashed inside the Windows agent.
+- The Express API binds to loopback, the USB agent receives a fresh per-run
+  authentication secret, and the Windows installer adds a firewall rule that
+  blocks remote inbound access to Jac's local port.
+- Microsoft Defender remains the malware scanner and remediation engine. AEGIS
+  is the decision/policy layer; it is not presented as a signature scanner.
+- This phase does not install a kernel driver and cannot guarantee pre-access
+  blocking. High-risk USB results are honestly labeled as detected/not blocked
+  and AEGIS selects containment.
+- USB devices that impersonate keyboards or network adapters (often called
+  BadUSB) require device-class allowlisting and are outside this storage-scanner
+  MVP.
+
+### First-time Windows setup
+
+Open PowerShell in the repository root and run:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\agent\windows\Setup-GhostShield.ps1
+powershell.exe -ExecutionPolicy Bypass -File .\agent\windows\Install-GhostShieldStartup.ps1
+```
+
+The setup script creates Jac's per-user Python environment under
+`%LOCALAPPDATA%\GhostShield\venv` and installs the existing server dependencies.
+The short runtime path avoids Windows package-install failures caused by deeply
+nested repository paths. Run the startup installer from an Administrator PowerShell
+window: it registers a current-user scheduled task, adds a Windows Firewall rule
+protecting Jac's local port, and launches a GhostShield shield icon in the Windows
+notification area.
+
+From the tray icon you can open the command center, rescan connected USB drives,
+or stop the background stack. The command center is also available at
+`http://127.0.0.1:4000/ghostshield/dashboard/dashboard.html`.
+
+To remove automatic startup:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\agent\windows\Uninstall-GhostShieldStartup.ps1
+```
+
+For a foreground development run, set `JAC_EXECUTABLE` to the Jac executable if
+it is not already on `PATH`, then run `npm run start:full` from `server/`. On
+Windows, that command launches Sentinel, AEGIS, and the USB agent.
+
+### Safe USB validation
+
+Use the industry-standard EICAR test file in a disposable Windows virtual machine
+instead of real malware. Keep Microsoft Defender real-time protection enabled,
+connect a test USB containing EICAR, and confirm that the GhostShield dashboard
+records a high-risk `usb_scan_result` with an AEGIS containment decision. Defender
+may quarantine the test file immediately; GhostShield checks recent Defender
+detections for the mounted drive so that remediation still appears in the report.
+
+Never test this feature with live malware on a normal workstation.
 
 ## Project overview
 
@@ -34,10 +129,15 @@ Sentinel is built to catch):
 - Reading or writing the clipboard without an obvious user-facing reason
 - Contacting a destination the page has never talked to before
 - Using URL paths that look like tracking/collection endpoints
+- Detecting newly mounted USB mass-storage volumes on Windows
+- Requesting Microsoft Defender scans and recording sanitized USB verdicts
 
 **Out of scope** (explicitly not attempted):
-- Detecting malware *content* (this isn't antivirus — it has no file
-  scanning, no signature database)
+- Shipping an independent malware signature engine; the USB MVP delegates
+  content scanning and remediation to Microsoft Defender
+- Pre-mount or pre-access USB blocking, which requires a signed minifilter or
+  managed device-control policy
+- Detecting malicious USB firmware or HID/network impersonation
 - Protecting against attacks that don't touch any instrumented browser
   API (e.g. a purely visual phishing page with no suspicious network/DOM
   behavior — that class of threat needs a different detector, not this one)
@@ -69,6 +169,8 @@ stored or transmitted. See [Privacy guarantees](#privacy-guarantees).
 - Dashboard: summary cards, a filterable incident table (severity /
   decision / event type / domain), expandable per-incident detail, a
   guarded clear-history action
+- Windows background agent: USB arrival polling, bounded privacy-preserving
+  inventory, Defender custom scan, tray controls, and optional start-at-logon
 - Optional Express server for AI-generated explanations, with a
   deterministic mock mode that needs no API key at all
 
@@ -166,6 +268,14 @@ project-root/
       services/ai-explanation.js
       middleware/error-handler.js
     .env.example
+  agent/
+    windows/
+      usb-agent.js              # removable-volume monitor and scan coordinator
+      defender-scanner.js       # Microsoft Defender custom-scan bridge
+      volume-inventory.js       # counts file categories; never returns filenames
+      GhostShield-Tray.ps1      # notification-area application
+      Setup-GhostShield.ps1     # per-user dependency setup
+      Install-GhostShieldStartup.ps1
   demo/
     safe-test.html
     suspicious-test.html
