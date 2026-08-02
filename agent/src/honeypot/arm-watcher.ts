@@ -13,7 +13,7 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
 import { getSettings } from "../storage/store.ts";
-import { listUsbDevices, type UsbDevice } from "../monitors/usb-monitor.ts";
+import { listUsbHidDevices, type UsbDevice } from "../monitors/usb-monitor.ts";
 import { SERVER_PORT } from "../shared/constants.ts";
 
 const execFileAsync = promisify(execFile);
@@ -91,7 +91,7 @@ export async function runArmWatcherTick(): Promise<void> {
     return;
   }
 
-  const devices = await listUsbDevices();
+  const devices = await listUsbHidDevices();
   const currentKeys = new Set(devices.map((d) => d.key));
 
   if (!initialized) {
