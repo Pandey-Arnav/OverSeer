@@ -57,6 +57,30 @@ body {
 .card-blocked .card-value { color: var(--danger); }
 .card-warned .card-value { color: var(--warning); }
 
+.honeypot-section {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+}
+.honeypot-section .section-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 700; }
+.honeypot-section h2 { margin: 2px 0 8px; font-size: 16px; }
+.honeypot-copy { font-size: 12px; color: var(--muted); margin: 0 0 12px; max-width: 640px; }
+.honeypot-input {
+  width: 100%;
+  max-width: 420px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  display: block;
+}
+.honeypot-result { margin-top: 10px; font-size: 13px; min-height: 18px; }
+.honeypot-result.neutral { color: var(--muted); }
+.honeypot-result.human { color: var(--accent-dark); }
+.honeypot-result.suspicious { color: var(--danger); font-weight: 600; }
+
 .filters {
   display: flex;
   gap: 16px;

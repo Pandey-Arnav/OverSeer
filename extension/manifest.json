@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Sentinel — Transaction Integrity Guardian",
+  "version": "0.1.0",
+  "description": "Protects financial transactions from silent field tampering — freezes and alerts the moment a recipient/account/amount field is rewritten programmatically after you filled it in.",
+  "icons": {
+    "16": "public/icons/icon16.png",
+    "48": "public/icons/icon48.png",
+    "128": "public/icons/icon128.png"
+  },
+  "action": {
+    "default_icon": {
+      "16": "public/icons/icon16.png",
+      "48": "public/icons/icon48.png",
+      "128": "public/icons/icon128.png"
+    },
+    "default_title": "Sentinel Transaction Guardian — click to open the Sentinel dashboard"
+  },
+  "background": {
+    "service_worker": "dist/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["dist/content.js"],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "permissions": ["storage"],
+  "host_permissions": ["http://localhost:4100/*", "http://*/*", "https://*/*"]
+}

@@ -47,6 +47,24 @@
     </div>
   </section>
 
+  <section class="honeypot-section">
+    <div class="section-heading">
+      <div>
+        <span class="section-label">BadUSB honeypot</span>
+        <h2>Keystroke timing detector</h2>
+      </div>
+    </div>
+    <p class="honeypot-copy">
+      Type into the field below. Human typing has natural rhythm and jitter between
+      keystrokes; a BadUSB/rubber-ducky device replaying a pre-programmed keystroke
+      sequence types at near-perfectly uniform, very fast intervals — a well-established
+      detection technique. This measures whatever HID device is currently sending
+      keystrokes to this field, not a system-wide monitor (see README for why).
+    </p>
+    <input type="text" id="honeypot-input" class="honeypot-input" placeholder="Type here to test (or simulate BadUSB via the demo script)…" autocomplete="off" />
+    <div id="honeypot-result" class="honeypot-result"></div>
+  </section>
+
   <section class="filters">
     <label>
       Category
@@ -57,6 +75,9 @@
         <option value="usb_hid_device">USB keyboard/mouse</option>
         <option value="usb_network_device">USB network adapter</option>
         <option value="usb_other_device">USB other</option>
+        <option value="usb_badusb_keystroke">BadUSB keystroke pattern</option>
+        <option value="transaction_tampering">Transaction tampering</option>
+        <option value="suspicious_script">Suspicious script</option>
       </select>
     </label>
     <label>

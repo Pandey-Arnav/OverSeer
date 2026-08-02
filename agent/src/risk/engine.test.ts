@@ -242,6 +242,65 @@ test("invalid event category throws instead of silently failing", () => {
   );
 });
 
+test("transaction field tampering alone crosses the block threshold and is 'blocked' (already frozen)", () => {
+  const result = evaluateRisk(
+    {
+      category: "transaction_tampering",
+      timestamp: Date.now(),
+      pageOrigin: "https://securebank.example",
+      pageUrl: "https://securebank.example/transfer",
+      destinationUrl: "https://securebank.example/transfer/submit",
+      tamperedFieldNames: ["recipientAccount"],
+    },
+    {},
+    true
+  );
+  assert.ok(result.score >= 70, `expected block-range score, got ${result.score}`);
+  assert.equal(result.severity, "high");
+  assert.equal(result.decision, "blocked");
+  const finding = result.reasons.find((r) => r.ruleId === "transaction-field-tampering");
+  assert.ok(finding);
+  assert.ok(finding.label.includes("recipientAccount"));
+});
+
+test("transaction field tampering rule does not fire without tampered fields", () => {
+  const result = evaluateRisk({
+    category: "transaction_tampering",
+    timestamp: Date.now(),
+    pageOrigin: "https://securebank.example",
+  });
+  assert.equal(result.reasons.length, 0);
+  assert.equal(result.decision, "allow");
+});
+
+test("BadUSB keystroke timing crosses block threshold on its own", () => {
+  const result = evaluateRisk({
+    category: "usb_badusb_keystroke",
+    timestamp: Date.now(),
+    keystrokeStats: { meanIntervalMs: 12, stdDevMs: 2, keyCount: 20 },
+  });
+  assert.ok(result.score >= 70);
+  assert.equal(result.decision, "detected_not_blocked"); // no remediation target for a timing pattern
+  assert.ok(result.reasons.some((r) => r.ruleId === "badusb-keystroke-timing"));
+});
+
+test("suspicious script findings accumulate per finding", () => {
+  const oneFinding = evaluateRisk({
+    category: "suspicious_script",
+    timestamp: Date.now(),
+    pageOrigin: "https://example.com",
+    scriptFindings: ["uses eval()"],
+  });
+  const twoFindings = evaluateRisk({
+    category: "suspicious_script",
+    timestamp: Date.now(),
+    pageOrigin: "https://example.com",
+    scriptFindings: ["uses eval()", "base64-decodes then executes a string"],
+  });
+  assert.equal(oneFinding.score, 25);
+  assert.equal(twoFindings.score, 50);
+});
+
 test("buildIncident produces the documented data model", () => {
   const event: SentinelEvent = {
     category: "network_connection",

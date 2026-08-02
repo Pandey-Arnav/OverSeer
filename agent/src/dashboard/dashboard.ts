@@ -3,9 +3,11 @@
  * bundled to public/dashboard.js by esbuild since the browser can't run
  * .ts directly. Talks to the same-origin Express API in server/app.ts.
  */
+import { TUNING } from "../shared/constants.ts";
 import type { AIExplanation, Decision, Incident, Settings } from "../shared/types.ts";
 
 const REFRESH_INTERVAL_MS = 5000;
+const HONEYPOT_BURST_TIMEOUT_MS = 800; // pause after which a "typing burst" is considered finished
 
 (function () {
   function requireEl<T extends Element>(id: string): T {
@@ -30,6 +32,9 @@ const REFRESH_INTERVAL_MS = 5000;
   const confirmMessage = requireEl<HTMLElement>("confirm-message");
   const confirmYesBtn = requireEl<HTMLButtonElement>("confirm-yes");
   const confirmNoBtn = requireEl<HTMLButtonElement>("confirm-no");
+
+  const honeypotInput = requireEl<HTMLInputElement>("honeypot-input");
+  const honeypotResult = requireEl<HTMLElement>("honeypot-result");
 
   let allIncidents: Incident[] = [];
   let settings: Settings = { protectionEnabled: true, aiExplanationsEnabled: true };
@@ -86,6 +91,63 @@ const REFRESH_INTERVAL_MS = 5000;
     statusLine.textContent = enabled ? "Protection active — monitoring network connections and USB devices." : "Protection paused — nothing is being monitored.";
     statusLine.className = `status-line ${enabled ? "enabled" : "disabled"}`;
   }
+
+  let keystrokeTimestamps: number[] = [];
+  let burstTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function computeStats(timestamps: number[]): { meanIntervalMs: number; stdDevMs: number; keyCount: number } {
+    const intervals: number[] = [];
+    for (let i = 1; i < timestamps.length; i++) {
+      const prev = timestamps[i - 1];
+      const cur = timestamps[i];
+      if (prev !== undefined && cur !== undefined) intervals.push(cur - prev);
+    }
+    const mean = intervals.reduce((sum, v) => sum + v, 0) / intervals.length;
+    const variance = intervals.reduce((sum, v) => sum + (v - mean) ** 2, 0) / intervals.length;
+    return { meanIntervalMs: mean, stdDevMs: Math.sqrt(variance), keyCount: timestamps.length };
+  }
+
+  async function reportHoneypotBurst(stats: { meanIntervalMs: number; stdDevMs: number; keyCount: number }): Promise<void> {
+    try {
+      const response = await fetch("/api/report-event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: "usb_badusb_keystroke", keystrokeStats: stats }),
+      });
+      const body = await response.json();
+      honeypotResult.textContent = `Suspicious: ${stats.meanIntervalMs.toFixed(1)}ms/key, ${stats.stdDevMs.toFixed(1)}ms jitter — flagged as likely BadUSB (score ${body.score}). Logged to the incident timeline below.`;
+      honeypotResult.className = "honeypot-result suspicious";
+      await refresh();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  function finishHoneypotBurst(): void {
+    burstTimer = null;
+    const stats = computeStats(keystrokeTimestamps);
+    keystrokeTimestamps = [];
+
+    if (stats.keyCount < TUNING.BADUSB_MIN_KEY_COUNT) {
+      honeypotResult.textContent = "";
+      honeypotResult.className = "honeypot-result neutral";
+      return;
+    }
+
+    const looksScripted = stats.meanIntervalMs <= TUNING.BADUSB_MAX_MEAN_INTERVAL_MS && stats.stdDevMs <= TUNING.BADUSB_MAX_STDDEV_MS;
+    if (looksScripted) {
+      void reportHoneypotBurst(stats);
+    } else {
+      honeypotResult.textContent = `Looks human: ${stats.meanIntervalMs.toFixed(1)}ms/key, ${stats.stdDevMs.toFixed(1)}ms jitter.`;
+      honeypotResult.className = "honeypot-result human";
+    }
+  }
+
+  honeypotInput.addEventListener("keydown", () => {
+    keystrokeTimestamps.push(performance.now());
+    if (burstTimer !== null) clearTimeout(burstTimer);
+    burstTimer = setTimeout(finishHoneypotBurst, HONEYPOT_BURST_TIMEOUT_MS);
+  });
 
   function renderExplanation(explanation: AIExplanation): HTMLDivElement {
     const box = document.createElement("div");
