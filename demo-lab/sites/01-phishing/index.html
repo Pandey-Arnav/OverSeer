@@ -1,0 +1,46 @@
+<!--
+  SIMULATED FIXTURE — Sentinel demo-lab
+  Exercises the "phishing/popup-spam" runtime behaviors: a popup via
+  window.open, a notification permission request fired immediately after
+  load, and a delayed redirect. Everything targets localhost only.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Congratulations! Claim Your Prize</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #fff3cd; text-align: center; margin-top: 60px; }
+  .fixture-banner { background: #ffcc00; color: #000; text-align: center; padding: 6px; font-size: 12px; font-weight: bold; }
+  h1 { color: #b8860b; }
+</style>
+</head>
+<body>
+  <div class="fixture-banner">⚠ SENTINEL DEMO-LAB FIXTURE — SIMULATED PHISHING/POPUP-SPAM PAGE</div>
+  <h1>🎉 You've Won a Free Prize! 🎉</h1>
+  <p>Click OK to claim your reward before it's too late.</p>
+
+  <script>
+    // Notification permission request immediately after load — a classic
+    // runtime red flag the rule engine watches for.
+    if (window.Notification && Notification.requestPermission) {
+      Notification.requestPermission();
+    }
+
+    // Popup spam — opens a harmless local popup shortly after load.
+    setTimeout(() => {
+      window.open("/popup.html", "_blank", "width=300,height=200");
+    }, 500);
+
+    // A second popup a moment later to simulate "spam".
+    setTimeout(() => {
+      window.open("/popup.html", "_blank", "width=300,height=200");
+    }, 900);
+
+    // Delayed redirect to a second local fixture page.
+    setTimeout(() => {
+      window.location.href = "/redirect-target.html";
+    }, 2500);
+  </script>
+</body>
+</html>

@@ -1,0 +1,48 @@
+<!--
+  SIMULATED FIXTURE — Sentinel demo-lab
+  Exercises "tracking/fingerprinting" runtime behaviors: a hidden iframe,
+  a canvas-fingerprint read, and first-party cookie writes/reads. All
+  local and inert — nothing is sent anywhere.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Free Online Article Reader</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 40px; }
+  .fixture-banner { background: #ffcc00; color: #000; text-align: center; padding: 6px; font-size: 12px; font-weight: bold; }
+</style>
+</head>
+<body>
+  <div class="fixture-banner">⚠ SENTINEL DEMO-LAB FIXTURE — SIMULATED TRACKING/FINGERPRINTING PAGE</div>
+  <h1>Today's Top Story</h1>
+  <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. This is a normal-looking
+     article page that quietly runs tracking behaviors in the background.</p>
+
+  <!-- Hidden iframe: zero-size, off-screen, loaded from the same demo-lab origin. -->
+  <iframe
+    src="/hidden-frame.html"
+    style="width:0; height:0; border:0; position:absolute; left:-9999px; top:-9999px;"
+    aria-hidden="true"
+  ></iframe>
+
+  <script>
+    // Canvas fingerprinting stub — reads a rendered canvas as a device signal.
+    function fingerprint() {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      ctx.textBaseline = "top";
+      ctx.font = "14px 'Arial'";
+      ctx.fillText("sentinel-demo-fingerprint", 2, 2);
+      return canvas.toDataURL();
+    }
+    const fp = fingerprint();
+    console.log("[demo-lab] computed fingerprint (unused):", fp.slice(0, 32) + "...");
+
+    // First-party cookie write + read (local only, never transmitted).
+    document.cookie = "sentinel_demo_tracker=" + Math.random().toString(36).slice(2) + "; path=/";
+    console.log("[demo-lab] cookies visible on this page:", document.cookie);
+  </script>
+</body>
+</html>
