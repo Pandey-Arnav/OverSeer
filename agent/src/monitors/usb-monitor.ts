@@ -41,6 +41,17 @@ interface DefenderScanResult {
   threatCount: number;
 }
 
+interface WindowsUsbRecord {
+  Kind?: string;
+  DeviceID?: string;
+  VolumeName?: string;
+  VolumeSerialNumber?: string;
+  InstanceId?: string;
+  Name?: string;
+  Class?: string;
+  ContainerId?: string;
+}
+
 function classify(node: UsbDeviceNode): EventCategory {
   const name = (node._name || "").toLowerCase();
   if (node.Media && node.Media.length > 0) return "usb_storage_device";
@@ -84,26 +95,88 @@ async function listMacUsbDevices(): Promise<UsbDevice[]> {
   }
 }
 
+function usbCategoryPriority(category: EventCategory): number {
+  if (category === "usb_network_device") return 3;
+  if (category === "usb_hid_device") return 2;
+  return 1;
+}
+
+function classifyWindowsPnp(record: WindowsUsbRecord): EventCategory {
+  const deviceClass = (record.Class || "").toLowerCase();
+  const name = (record.Name || "").toLowerCase();
+  if (deviceClass === "net" || /ethernet|network|wireless|\blan\b/.test(name)) return "usb_network_device";
+  if (["keyboard", "mouse", "hidclass"].includes(deviceClass) || /keyboard|mouse|\bhid\b|input device/.test(name)) {
+    return "usb_hid_device";
+  }
+  return "usb_other_device";
+}
+
+/** Converts the bounded PowerShell snapshot into stable, de-duplicated USB devices. Exported for fixture tests. */
+export function parseWindowsUsbDevices(stdout: string): UsbDevice[] {
+  const decoded = JSON.parse(stdout || "[]") as WindowsUsbRecord | WindowsUsbRecord[] | null;
+  const records = decoded == null ? [] : Array.isArray(decoded) ? decoded : [decoded];
+  const devices = new Map<string, UsbDevice>();
+
+  for (const record of records) {
+    if (record.Kind === "storage") {
+      if (typeof record.DeviceID !== "string" || !/^[A-Za-z]:$/.test(record.DeviceID)) continue;
+      const deviceId = record.DeviceID.toUpperCase();
+      const key = `volume:${record.VolumeSerialNumber || deviceId}`.toLowerCase();
+      devices.set(key, {
+        key,
+        name: record.VolumeName?.trim() || `Removable drive ${deviceId}`,
+        category: "usb_storage_device",
+        bsdName: deviceId,
+      });
+      continue;
+    }
+
+    if (record.Kind !== "pnp" || typeof record.InstanceId !== "string") continue;
+    if (!/^(USB|HID)\\VID_/i.test(record.InstanceId)) continue;
+
+    const category = classifyWindowsPnp(record);
+    const vendorId = record.InstanceId.match(/VID_([0-9A-F]{4})/i)?.[1]?.toUpperCase();
+    const productId = record.InstanceId.match(/PID_([0-9A-F]{4})/i)?.[1]?.toUpperCase();
+    const identity = record.ContainerId?.trim() || record.InstanceId;
+    const key = `pnp:${identity}`.toLowerCase();
+    const device: UsbDevice = {
+      key,
+      name: record.Name?.trim() || (category === "usb_hid_device" ? "USB keyboard/HID device" : "USB device"),
+      vendorId,
+      productId,
+      category,
+      bsdName: null,
+    };
+
+    // Composite devices commonly expose both HIDClass and Keyboard nodes
+    // with the same container ID. Keep one incident and prefer the category
+    // carrying the stronger security signal.
+    const existing = devices.get(key);
+    if (!existing || usbCategoryPriority(device.category) > usbCategoryPriority(existing.category)) {
+      devices.set(key, device);
+    }
+  }
+
+  return [...devices.values()];
+}
+
 async function listWindowsUsbDevices(): Promise<UsbDevice[]> {
   const query = [
     "$ErrorActionPreference = 'Stop'",
-    "$items = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=2' | Select-Object DeviceID,VolumeName,VolumeSerialNumber)",
-    "ConvertTo-Json -InputObject $items -Compress",
+    "$records = [System.Collections.Generic.List[object]]::new()",
+    "$volumes = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=2' | Select-Object DeviceID,VolumeName,VolumeSerialNumber)",
+    "foreach ($volume in $volumes) { $records.Add([pscustomobject]@{ Kind = 'storage'; DeviceID = $volume.DeviceID; VolumeName = $volume.VolumeName; VolumeSerialNumber = $volume.VolumeSerialNumber }) }",
+    "$pnpDevices = @()",
+    "try { $pnpDevices = @(Get-PnpDevice -PresentOnly -Class @('Keyboard','HIDClass','Mouse','Net') -ErrorAction Stop | Where-Object { $_.InstanceId -match '^(USB|HID)\\\\VID_' }) } catch { $pnpDevices = @(Get-CimInstance Win32_PnPEntity -ErrorAction Stop | Where-Object { $_.ConfigManagerErrorCode -eq 0 -and $_.PNPDeviceID -match '^(USB|HID)\\\\VID_' -and $_.PNPClass -in @('Keyboard','HIDClass','Mouse','Net') } | ForEach-Object { [pscustomobject]@{ InstanceId = $_.PNPDeviceID; FriendlyName = $_.Name; Class = $_.PNPClass } }) }",
+    "foreach ($device in $pnpDevices) { $containerId = $null; try { $containerId = (Get-PnpDeviceProperty -InstanceId $device.InstanceId -KeyName 'DEVPKEY_Device_ContainerId' -ErrorAction Stop).Data } catch {}; $records.Add([pscustomobject]@{ Kind = 'pnp'; InstanceId = $device.InstanceId; Name = $device.FriendlyName; Class = $device.Class; ContainerId = $(if ($containerId) { [string]$containerId } else { $null }) }) }",
+    "ConvertTo-Json -InputObject @($records) -Depth 3 -Compress",
   ].join("; ");
   try {
     const { stdout } = await execFileAsync("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", query], {
       maxBuffer: 1024 * 1024,
       windowsHide: true,
     });
-    const parsed = JSON.parse(stdout || "[]") as Array<{ DeviceID?: string; VolumeName?: string; VolumeSerialNumber?: string }>;
-    return parsed
-      .filter((volume) => typeof volume.DeviceID === "string" && /^[A-Za-z]:$/.test(volume.DeviceID))
-      .map((volume) => ({
-        key: volume.VolumeSerialNumber || volume.DeviceID!,
-        name: volume.VolumeName?.trim() || `Removable drive ${volume.DeviceID}`,
-        category: "usb_storage_device" as const,
-        bsdName: volume.DeviceID!,
-      }));
+    return parseWindowsUsbDevices(stdout);
   } catch (err) {
     console.error("[GhostShield] Windows USB discovery failed:", (err as Error).message);
     return [];
