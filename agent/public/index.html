@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sentinel Agent</title>
+<link rel="stylesheet" href="dashboard.css" />
+</head>
+<body>
+  <header class="page-header">
+    <div class="brand">
+      <span class="brand-icon">🛡️</span>
+      <div>
+        <h1>Sentinel Agent</h1>
+        <p id="status-line" class="status-line">Loading…</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <label class="setting-row">
+        <span>Protection</span>
+        <input type="checkbox" id="protection-toggle" />
+      </label>
+      <label class="setting-row">
+        <span>AI explanations</span>
+        <input type="checkbox" id="ai-toggle" />
+      </label>
+      <button id="clear-history" class="danger-button">Clear history</button>
+    </div>
+  </header>
+
+  <section class="summary-cards">
+    <div class="card">
+      <span class="card-value" id="summary-total">0</span>
+      <span class="card-label">Total incidents</span>
+    </div>
+    <div class="card card-blocked">
+      <span class="card-value" id="summary-blocked">0</span>
+      <span class="card-label">Action available</span>
+    </div>
+    <div class="card card-warned">
+      <span class="card-value" id="summary-warned">0</span>
+      <span class="card-label">Warnings</span>
+    </div>
+    <div class="card">
+      <span class="card-value" id="summary-avg-score">0</span>
+      <span class="card-label">Average risk score</span>
+    </div>
+  </section>
+
+  <section class="filters">
+    <label>
+      Category
+      <select id="filter-category">
+        <option value="">All</option>
+        <option value="network_connection">Network connection</option>
+        <option value="usb_storage_device">USB storage</option>
+        <option value="usb_hid_device">USB keyboard/mouse</option>
+        <option value="usb_network_device">USB network adapter</option>
+        <option value="usb_other_device">USB other</option>
+      </select>
+    </label>
+    <label>
+      Severity
+      <select id="filter-severity">
+        <option value="">All</option>
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+      </select>
+    </label>
+    <label>
+      Decision
+      <select id="filter-decision">
+        <option value="">All</option>
+        <option value="allow">Allowed</option>
+        <option value="warn">Warned</option>
+        <option value="blocked">Action available</option>
+        <option value="detected_not_blocked">Detected (no safe action)</option>
+      </select>
+    </label>
+    <label class="filter-search">
+      Search
+      <input type="text" id="filter-search" placeholder="process, IP, device name…" />
+    </label>
+  </section>
+
+  <table class="incident-table">
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Category</th>
+        <th>Summary</th>
+        <th>Score</th>
+        <th>Decision</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="incident-rows"></tbody>
+  </table>
+  <p id="empty-state" class="empty-state" hidden>No incidents match the current filters.</p>
+
+  <div id="confirm-overlay" class="confirm-overlay" hidden>
+    <div class="confirm-box">
+      <p id="confirm-message">Clear all stored incidents? This cannot be undone.</p>
+      <div class="confirm-actions">
+        <button id="confirm-yes" class="danger-button">Confirm</button>
+        <button id="confirm-no" class="secondary-button">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

@@ -7,3 +7,6 @@ node_modules/
 dist/
 .DS_Store
 *.log
+logs/
+agent/public/dashboard.js
+agent/public/dashboard.js.map

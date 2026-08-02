@@ -1,356 +1,324 @@
-# Sentinel — Runtime Threat Guardian
+# Sentinel Agent — Local Intrusion Detection
 
-A Chrome MV3 extension that watches how a webpage *behaves* after it
-loads — not just what domain it's on — scores that behavior against a
-transparent, local rule engine, and blocks or warns before the risky
-action completes wherever that's technically possible. An optional local
-server can turn a logged incident's rule findings into a plain-English
-explanation.
+A background daemon that runs on your Mac and watches real OS-level
+signals — network connections and USB device attachment — for signs of
+intrusion, scoring them against a transparent local rule engine and
+surfacing a manual "take action" button (terminate process / eject
+device) when something crosses the threshold. Nothing acts
+automatically; every remediation requires your explicit confirmation in
+the local web dashboard.
 
-Built to a strict 1–2 day hackathon scope: **a reliable end-to-end demo
-over broad feature coverage.** Every blocking claim in this project was
-checked against what Manifest V3 actually allows before being built —
-see [MV3 limitations](#manifest-v3-limitations).
+This began as a Chrome-extension prototype that could only see behavior
+inside a browser tab. It was rebuilt from the ground up as a real
+background agent because a browser extension fundamentally cannot see
+what's happening on the rest of the machine — a different technical
+domain, not a refactor.
 
 ## Project overview
 
-Most browser security tools work off blacklists: known-bad domains, known
-malware signatures. Sentinel instead watches *behavior* — a form quietly
-posting a password to a different origin, a page phoning home to a raw IP
-address, a hidden iframe appearing out of nowhere — and scores it locally,
-with zero backend dependency for the core detection loop.
+Sentinel Agent polls two real OS surfaces on a timer:
+- **Network connections** (`lsof -i -P -n`) — every established
+  connection and open listening port, with the owning process's
+  identity, code-signing status, and executable path.
+- **USB devices** (`system_profiler SPUSBDataType -json`) — every
+  attached device, classified by name into storage / HID (keyboard-
+  mouse-class) / network-adapter / other.
+
+Each newly-observed event is scored by an additive, fully transparent
+rule engine (same philosophy as the original browser prototype: every
+point is traceable to a named rule, no black-box model) and logged
+locally. Nothing leaves the machine except an explicit, user-triggered
+AI-explanation request.
 
 ## Threat model
 
-**In scope** (things a malicious or compromised page might do that
-Sentinel is built to catch):
-- Exfiltrating form data (especially credentials) to a different origin
-- Sending unusually large payloads via `fetch`/XHR/`sendBeacon`
-- Using `sendBeacon` for fire-and-forget background exfiltration
-- Contacting a destination expressed as a raw IP rather than a domain
-- Injecting a hidden iframe
-- Redirecting the page immediately after a user click (bait-and-switch)
-- Chaining several redirects in quick succession
-- Reading or writing the clipboard without an obvious user-facing reason
-- Contacting a destination the page has never talked to before
-- Using URL paths that look like tracking/collection endpoints
+**In scope:**
+- A process connecting to a port historically associated with malware/
+  backdoors (either as the outbound destination, or — the stronger
+  signal — a local process *listening* on one)
+- A process that isn't code-signed at all making network connections
+- A process running from a commonly-abused staging location (`/tmp`,
+  `/var/tmp`, straight out of `~/Downloads`) making network connections
+- A process suddenly opening a new listening port (potential backdoor/
+  reverse-shell setup)
+- A process contacting many distinct new destinations in quick
+  succession (a beaconing/scanning pattern)
+- A newly-attached USB device, classified by risk (a USB-network
+  adapter — a possible MITM implant — scores highest; storage devices
+  and HID devices are scored separately)
 
-**Out of scope** (explicitly not attempted):
-- Detecting malware *content* (this isn't antivirus — it has no file
-  scanning, no signature database)
-- Protecting against attacks that don't touch any instrumented browser
-  API (e.g. a purely visual phishing page with no suspicious network/DOM
-  behavior — that class of threat needs a different detector, not this one)
-- Anything server-side; Sentinel only ever sees what happens inside the
-  tab
+**Out of scope for this build** (see Future improvements):
+- File-system integrity monitoring (startup items, LaunchAgents/
+  LaunchDaemons, system file changes)
+- Deep process behavior monitoring beyond "what network connections did
+  it make" (e.g. syscall tracing, memory inspection)
+- Anything beyond macOS — `lsof`/`system_profiler`/`codesign`/`diskutil`
+  are all macOS-specific
+- Detecting malware *content* — this has no file scanning or signature
+  database; it's behavior-based, not antivirus
 
-**What Sentinel deliberately never collects:** password values, cookies,
-auth tokens, full request bodies, or raw form field contents. Only
-metadata — origins, approximate sizes, method, event type — is ever
-stored or transmitted. See [Privacy guarantees](#privacy-guarantees).
+**What Sentinel Agent deliberately never collects:** full network
+payloads, file contents, keystrokes, or anything beyond connection/
+device metadata (process name, path, remote address/port, device name).
 
 ## Features
 
-- Real-time detection across 8 behavior categories (see rule list below)
-- A transparent, additive 0–100 risk score — every point is traceable to
-  a named rule, not a black-box model
-- Three-tier decision: **allow** (0–39) → **warn + log** (40–69) →
-  **block when technically possible, otherwise detect + log** (70–100)
-- Actual prevention for what CAN be reliably prevented: form submissions,
-  async fetch/XHR, and Clipboard API calls
-- Honest "detected but not blocked" labeling for what can't be
-  (`sendBeacon`, redirects, SPA history changes, hidden iframes)
-- One real `declarativeNetRequest` rule for the one case that's a genuine
-  static-pattern fit: raw-IP sub-resource requests
-- Local incident log (`chrome.storage.local`) — nothing leaves the
-  browser unless you explicitly click "Generate AI explanation"
-- Popup: live protection status, today's counts, last 3 incidents,
-  protection/AI toggles
-- Dashboard: summary cards, a filterable incident table (severity /
-  decision / event type / domain), expandable per-incident detail, a
-  guarded clear-history action
-- Optional Express server for AI-generated explanations, with a
-  deterministic mock mode that needs no API key at all
+- 8 detection rules across network + USB, additive 0–100 scoring, same
+  three-tier decision model as the original prototype: **allow** (0–39)
+  → **warn + log** (40–69) → **action available** (70–100)
+- **No automatic actions, ever.** "Blocked" here means "a safe
+  remediation exists and is one click away in the dashboard" — not that
+  anything already happened. Killing a process or ejecting a drive is
+  much higher-stakes than blocking one HTTP request (the original
+  browser prototype's ceiling), so this project has no auto-block tier
+  at all.
+- Real, verified remediation: `SIGTERM` a process (skipped entirely for
+  root-owned or known-critical system processes — see
+  `isSafeToTerminate`), or `diskutil eject` a USB storage volume
+- Local web dashboard (auto-refreshing) with summary cards, filters
+  (category/severity/decision/search), expandable per-incident detail,
+  and a guarded clear-history action
+- Optional AI-generated plain-English explanations per incident
+  (deterministic mock mode by default, live via any OpenAI-compatible
+  endpoint)
+- Installable as a macOS LaunchAgent: starts at login, restarts
+  automatically if it crashes
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Page["Web page (untrusted)"]
-        JS["Page's own JavaScript"]
+    subgraph OS["macOS"]
+        LSOF["lsof -i -P -n"]
+        USB["system_profiler SPUSBDataType"]
+        CODESIGN["codesign -dv"]
     end
 
-    subgraph MAIN["MAIN world (page-monitor.js)"]
-        Hooks["Wraps: fetch, XHR, sendBeacon,\nClipboard API, history.pushState/replaceState"]
+    subgraph Agent["agent/ (single Node process)"]
+        NetMon["monitors/network-monitor.ts\n(poll every 5s, diff vs. last snapshot)"]
+        UsbMon["monitors/usb-monitor.ts\n(poll every 3s, diff vs. last snapshot)"]
+        ProcInfo["monitors/process-info.ts\n(codesign + path check)"]
+        Engine["risk/engine.ts + risk/rules.ts\n(8 rules -> score -> decision)"]
+        Store["storage/store.ts\n(~/.sentinel/*.json)"]
+        Remediate["remediation/actions.ts\n(SIGTERM / diskutil eject —\nonly on explicit dashboard click)"]
+        Server["server/app.ts\n(Express: dashboard + REST API)"]
     end
 
-    subgraph ISOLATED["ISOLATED world (content-script.js)"]
-        Bridge["postMessage bridge\n(validates source+origin+shape)"]
-        Native["Native listeners:\nsubmit, click, MutationObserver (iframes)"]
+    subgraph UI["Local browser tab"]
+        Dash["dashboard.ts\n(http://localhost:4100)"]
     end
 
-    subgraph BG["background/service-worker.js"]
-        Ctx["Per-tab context:\nseen destinations, click timing,\nredirect window"]
-        Engine["risk/engine.js\n+ risk/rules.js"]
-        Store["storage/incidents.js\n(chrome.storage.local)"]
-        DNR["declarativeNetRequest\n(raw-IP rule only)"]
-    end
-
-    subgraph UI["Extension UI"]
-        Popup["popup/"]
-        Dash["dashboard/"]
-    end
-
-    subgraph Server["server/ (optional)"]
-        Explain["POST /api/explain\n(mock or OpenAI-compatible)"]
-    end
-
-    JS -->|"calls fetch/XHR/etc"| Hooks
-    Hooks -->|"postMessage: evaluate-request"| Bridge
-    Native -->|"submit/click/iframe events"| Bridge
-    Bridge -->|"chrome.runtime.sendMessage"| Ctx
-    Ctx --> Engine
+    LSOF --> NetMon
+    USB --> UsbMon
+    NetMon --> ProcInfo
+    ProcInfo --> CODESIGN
+    NetMon --> Engine
+    UsbMon --> Engine
     Engine --> Store
-    Engine -->|"decision"| Bridge
-    Bridge -->|"postMessage: evaluate-response"| Hooks
-    Hooks -->|"allow: call original / block: reject"| JS
-
-    Store --> Popup
-    Store --> Dash
-    Dash -->|"incident metadata only"| Explain
-    Explain -.->|"summary/technical/recommendation"| Dash
-
-    chrome.webNavigation -.->|"redirect events"| Ctx
+    Store --> Server
+    Server --> Dash
+    Dash -->|"click: terminate/eject"| Server
+    Server --> Remediate
+    Dash -->|"click: explain (incident metadata only)"| Server
+    Server -.->|"summary/technical/recommendation"| Dash
 ```
 
-**Why two content-script worlds?** MV3 content scripts run in an
-**ISOLATED** world by default — they share the page's DOM but have their
-own separate JS globals. Patching `window.fetch` from there does **not**
-intercept the page's own calls to `fetch`, because each world has its own
-copy of the mutable global object. Actually observing what the page does
-requires injecting into the page's **MAIN** world (`"world": "MAIN"` in
-`manifest.json`, Chrome 111+). MAIN-world scripts have no `chrome.*` API
-access, so decisions bridge back to the isolated world via a validated
-`window.postMessage` round trip.
+**Why this had to stop being a browser extension:** every rule in the
+original prototype (cross-origin form submission, hidden iframes,
+clipboard access) only makes sense *inside a browser tab* — a Chrome
+extension has no visibility into what other applications on the machine
+are doing, what's connecting to the network outside the browser, or
+what's plugged into a USB port. "Detect any intrusions on your laptop"
+requires OS-level signals a browser sandbox structurally cannot provide.
 
 ## Folder structure
 
 ```
 project-root/
-  extension/
-    manifest.json
-    background/
-      service-worker.js       # canonical risk evaluation, storage, badge, DNR rule
-    content/
-      content-script.js       # ISOLATED world: bridge + native DOM listeners
-      page-monitor.js         # MAIN world: fetch/XHR/sendBeacon/clipboard/history hooks
-    risk/
-      rules.js                # 11 pure, independently-testable detection rules
-      engine.js                # scoring + decision + incident builder
-      engine.test.js           # Node built-in test runner
-    storage/
-      incidents.js             # chrome.storage.local read/write/query
-    popup/
-      popup.html / .css / .js
-    dashboard/
-      dashboard.html / .css / .js
-    shared/
-      constants.js             # rule weights, thresholds, enums — single source of truth
-      utils.js                 # origin/IP parsing, id/timestamp helpers
-    public/icons/
-  server/
-    package.json
-    src/
-      app.js
-      routes/explain.js
-      services/ai-explanation.js
-      middleware/error-handler.js
+  agent/
+    package.json, tsconfig.json, esbuild.config.mjs
     .env.example
-  demo/
-    safe-test.html
-    suspicious-test.html
-    redirect-test.html
+    src/
+      index.ts                    # entry point: starts server + both monitor intervals
+      shared/{types.ts, constants.ts}
+      risk/{rules.ts, engine.ts, engine.test.ts}
+      monitors/
+        network-monitor.ts        # lsof polling, diffing, evaluation
+        usb-monitor.ts             # system_profiler polling, diffing, evaluation
+        process-info.ts             # codesign + suspicious-path + isSafeToTerminate
+      storage/store.ts              # JSON-file incidents/settings (~/.sentinel/)
+      remediation/actions.ts        # terminateProcess, ejectUsbDevice
+      server/{app.ts, ai-explanation.ts}
+      dashboard/dashboard.ts        # client-side; bundled by esbuild (runs in a real browser)
+    public/
+      index.html, dashboard.css
+      dashboard.js                  # esbuild output, gitignored — run `npm run build:dashboard`
+    launchd/com.sentinel.agent.plist.template
+    scripts/{install.sh, uninstall.sh}
+    demo/trigger-suspicious-connection.sh
   PLAN.md
   README.md
 ```
 
 ## Installation
 
-### 1. Extension (no build step — vanilla JS, load directly)
-
-1. Open `chrome://extensions`
-2. Enable **Developer mode** (top-right toggle)
-3. Click **Load unpacked** → select the `extension/` directory
-4. Sentinel's shield icon appears in the toolbar; click it for the popup
-
-The extension is **fully functional with no backend running** — only the
-"Generate AI explanation" button in the dashboard needs the server.
-
-### 2. Backend (optional — only needed for AI explanations)
+Requires macOS (uses `lsof`, `system_profiler`, `codesign`, `diskutil` —
+all macOS-only) and Node.js.
 
 ```sh
-cd server
+cd agent
 npm install
-cp .env.example .env      # leave OPENAI_API_KEY blank for mock mode
-npm start                  # listens on http://localhost:4000
+npm run build:dashboard   # bundles the one client-side file the daemon serves
+npm start                  # runs in the foreground — Ctrl+C to stop
 ```
 
-**Environment variables** (`server/.env`):
+Open **http://localhost:4100** for the dashboard. The daemon itself
+(`src/index.ts` and everything it imports) runs directly via Node's
+native TypeScript support — no build step for the daemon, only for the
+dashboard's client-side bundle.
+
+### Running in the background permanently (LaunchAgent)
+
+```sh
+cd agent
+./scripts/install.sh     # starts now, and again automatically at every login
+```
+
+Logs land in `agent/logs/agent.log` / `agent.error.log`. To remove:
+`./scripts/uninstall.sh` (incident history in `~/.sentinel/` is left
+untouched — delete that directory yourself for a full clean slate).
+
+### Environment variables (`agent/.env`, copy from `.env.example`)
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PORT` | `4000` | Server port |
-| `OPENAI_API_KEY` | *(unset)* | If unset, `/api/explain` always returns the deterministic mock explanation |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Verify against your account's available models — naming changes over time |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Point at any OpenAI-*compatible* chat-completions endpoint |
-
-The demo pages are also served by this same server, under `/demo/*.html`
-(see below) — one `npm start` gets you both.
+| `SENTINEL_PORT` | `4100` | Dashboard/API port |
+| `OPENAI_API_KEY` | *(unset)* | If unset, AI explanations always use the deterministic mock |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Verify against your account's available models |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-*compatible* endpoint (Groq verified working) |
+| `SENTINEL_DATA_DIR` | `~/.sentinel` | Where incident/settings JSON files live |
 
 ## Demo instructions
 
-With the server running (`cd server && npm start`) and the extension
-loaded:
+With the agent running (`npm start`, or installed via `install.sh`):
 
-1. Open `http://localhost:4000/demo/safe-test.html` — submit the form,
-   watch the popup badge. Expect **no incidents, score 0**.
-2. Open `http://localhost:4000/demo/suspicious-test.html` — try each
-   numbered button in order:
-   - **#1 password form** → should be **blocked** (an in-page interstitial
-     appears with a risk score and a "Continue anyway" override)
-   - **#2–6** (large payload, beacon, hidden iframe, clipboard, raw IP) →
-     each logs an incident with mid-to-high severity
-3. Open `http://localhost:4000/demo/redirect-test.html` — click "Simulate
-   click + rapid redirects". Expect a **medium/high** score marked
-   `detected_not_blocked` (redirects can't be reliably cancelled — see
-   below), not `blocked`.
-4. Click the toolbar icon → **Open dashboard** to see every incident,
-   filter by severity/decision/event type/domain, expand a row for the
-   full rule breakdown, and click **Generate AI explanation** on any row.
+1. **Network — suspicious listening port:**
+   ```sh
+   ./demo/trigger-suspicious-connection.sh
+   ```
+   Opens a real (harmless) `nc` listener on port 31337 — a port with a
+   long history of malware/backdoor association. Within one poll cycle
+   (~5s) this should appear in the dashboard scored **75/100, blocked**,
+   citing both `suspicious-port` and `new-listening-port`, with a
+   "Terminate process" button that genuinely works (verified live during
+   development against a disposable test process).
 
-All three demo pages carry a visible on-page banner and are entirely
-self-contained fixtures — see the [Privacy guarantees](#privacy-guarantees)
-section for exactly what does and doesn't leave the browser.
+2. **USB — plug in any USB drive.** Within ~3s it should appear as a
+   `usb_storage_device` incident with an "Eject device" button.
+
+3. Open the dashboard, filter by category/severity/decision, expand a
+   row for the full rule breakdown, and click **Generate AI
+   explanation** on any incident.
 
 ## Testing instructions
 
 ```sh
-cd extension
-npm test
+cd agent
+npm test          # risk-engine tests (17, pure logic — no OS calls)
+npm run typecheck # tsc --noEmit
+npm run check     # both
 ```
 
-Runs Node's built-in test runner (`node --test`) against
-`risk/engine.test.js` — 15 tests covering: safe same-origin GET, cross-
-origin POST, large payload, password-form-to-another-origin (and that
-it's marked `blocked`), raw IP destination, multiple rules accumulating
-additively, score clamping at 100, every threshold boundary
-(0/39/40/69/70/100), non-blockable event types correctly landing on
-`detected_not_blocked` instead of `blocked`, redirect-after-click (with
-and without context), unseen-destination (with and without a
-`seenDestinations` set), missing optional fields *not* throwing, invalid
-event types *throwing*, and that `buildIncident()` never carries a
-sensitive-data key.
+The monitors themselves (`network-monitor.ts`, `usb-monitor.ts`) are
+integration code that shells out to real OS tools — not unit-tested,
+verified instead by actually running the daemon (see below). The 17
+engine tests cover: normal traffic scoring 0, suspicious-port firing for
+*both* outbound connections and local listeners, unsigned-process
+detection, suspicious-path detection (with the ad-hoc-signature
+combination), unseen-remote-host (with/without context), new-listening-
+port (new vs. already-known), the beaconing rule, all 4 USB categories
+scoring independently, remediation-safety gating `blocked` vs.
+`detected_not_blocked`, score clamping, every threshold boundary, and
+that an invalid category throws instead of failing silently.
 
-No server-side tests are included — the Express layer is thin
-(validation + a mock/live explanation call) and was verified manually via
-`curl` during development (see Phase 4 notes in the build log / `PLAN.md`).
-
-## Manifest V3 limitations
-
-This was checked deliberately, not assumed — **do not treat any of the
-below as solved by `declarativeNetRequest` alone**:
-
-| Behavior | Can MV3 block it? | What Sentinel does |
-|---|---|---|
-| Form submission | Yes — native `submit` event, `preventDefault()` holds it | Actually blocked; resumes via `form.submit()` (doesn't re-fire the listener) |
-| Async `fetch` | Yes — already returns a Promise, gating it doesn't break the page's control flow | Actually blocked (rejected promise) |
-| Async XHR | Yes — same reasoning, callback-based | Actually blocked (delays the real `.send()` until a decision arrives) |
-| **Synchronous** XHR (`async: false`) | No — delaying it would freeze the page | Detected and logged only, **never** claimed as blocked |
-| Clipboard API | Yes — promise-based | Actually blocked (rejected promise) |
-| `navigator.sendBeacon` | **No** — the whole point of the API is a synchronous, fire-and-forget call with no way to defer or cancel it after invocation | Detected and logged only |
-| Top-level redirects / navigation | **No** — MV3 removed reliable blocking `webRequest` for navigation; there is no supported way to cancel an in-progress top-level navigation from an extension | Detected via `webNavigation.onCommitted`, logged, marked `detected_not_blocked` |
-| `history.pushState`/`replaceState` (SPA nav) | **No**, not without risking breaking the page's own routing | Detected and logged only |
-| Hidden iframe | Partial — by the time a `MutationObserver` callback fires, the browser may have already started loading the iframe's `src` | Detected and logged; not promised to be prevented |
-| `declarativeNetRequest` for dynamic, JS-scored blocking | **No** — DNR only matches static URL patterns; it cannot react to a runtime-computed score | Used for exactly one static-pattern-appropriate case: raw-IP sub-resource requests (see below) |
-
-**Why the raw-IP `declarativeNetRequest` rule is scoped to sub-resources
-only:** a user directly navigating to an IP address (a home router at
-`192.168.1.1`, say) is completely normal and must not be blocked. A
-*page's own background request* to a raw IP is the actual suspicious
-pattern this extension targets, so the rule's `resourceTypes` excludes
-`main_frame`.
+**This was verified genuinely end-to-end while building it** — not just
+unit-tested in isolation:
+- Ran the live daemon against this machine's real network traffic and
+  found a real false positive: a legitimate Cloudflare `workerd` process
+  was flagged because an early version of the suspicious-path rule
+  matched *any* dot-prefixed directory in a path, and this machine's own
+  project directory happens to live under `~/.superset/...`. Fixed by
+  narrowing the rule to genuine staging locations (`/tmp`, `/var/tmp`,
+  `~/Downloads`) — see the comment in `shared/constants.ts`.
+- Ran the `nc`-on-31337 demo live and confirmed the resulting incident
+  scored 75/blocked with the correct PID.
+- Called the remediation endpoint against a disposable test process
+  (`yes > /dev/null &`) and confirmed it was actually terminated —
+  never tested against a real system process, for obvious reasons.
+- Confirmed the USB monitor's startup baseline correctly treats
+  already-connected devices (built-in keyboard/trackpad) as pre-existing,
+  not "newly attached."
 
 ## Privacy guarantees
 
-Sentinel never collects, stores, or transmits:
-- Password values or any form field's actual contents
-- Cookies or authorization headers
-- Full request/response bodies
-- Raw clipboard contents (only *that* a clipboard read/write was
-  attempted, not the text itself)
-
-What it does store locally (`chrome.storage.local`, never leaves the
-browser except via an explicit "Generate AI explanation" click): page
-origin, destination origin, event type, HTTP method, an **approximate**
-byte size (computed and immediately discarded — the value itself is never
-kept), the computed score/severity/decision, and the named rules that
-fired. `risk/engine.test.js` includes an explicit test asserting the
-incident object never carries a `password`/`cookie`/`token`/
-`authorization`/`formData`/`rawBody`/`value` key.
-
-The only thing that ever leaves the machine is the same incident metadata
-above, sent to `/api/explain` **only when the user clicks that button**,
-and only if you've configured a real backend — the mock mode (default)
-makes zero network calls at all.
+Sentinel Agent never collects: file contents, keystrokes, clipboard
+data, or full network payloads. What it stores locally
+(`~/.sentinel/incidents.json`, never transmitted anywhere): process
+name/path, remote address/port or device name, the computed score and
+which named rules fired. The only thing that ever leaves the machine is
+that same incident metadata, sent to your configured AI endpoint **only
+when you click "Generate AI explanation,"** and only if you've set an
+API key — the default mock mode makes zero network calls.
 
 ## Known limitations
 
-- Per-tab detection context (seen destinations, click timing, redirect
-  window) is held in-memory in the service worker. MV3 can terminate and
-  restart service workers between events, which resets this context —
-  already-logged incidents are unaffected (they're durably in
-  `chrome.storage.local`), but a rule that depends on cross-event memory
-  (e.g. "unseen destination") may occasionally under-fire right after a
-  service-worker restart.
-- Blocking a request that already left the wrapper before a decision
-  arrived isn't possible — the async-gated categories (fetch/XHR/
-  clipboard) have a ~3-second fail-open timeout so a bridge hiccup can
-  never hang the page; in the rare case that fires, the action proceeds
-  (fail-open by design, logged either way).
-- The "large payload" and "suspicious path" thresholds are static
-  constants (`shared/constants.js`), not adaptive — a legitimate large
-  upload to a same-origin endpoint won't be flagged (no cross-origin
-  rule), but a legitimate large cross-origin upload could be.
-- No test coverage for the Express server beyond manual `curl` checks
-  during development.
-- No persistence beyond `chrome.storage.local`'s quota; very heavy
-  browsing could eventually hit the `MAX_STORED_INCIDENTS` cap (500),
-  which just drops the oldest incidents.
+- **macOS only.** `lsof`, `system_profiler`, `codesign`, `diskutil`, and
+  `launchctl` are all macOS-specific; nothing here runs on Linux/Windows.
+- **Visibility is scoped to the current user's session.** Running
+  unprivileged, `lsof -i` only shows the current user's own processes —
+  this is a real privacy/permission boundary, not a bug, but it also
+  means a root-owned malicious process's network activity would not be
+  observed at all (and even if it were, remediation deliberately refuses
+  to touch it — see `isSafeToTerminate`).
+- **USB device classification is name-based**, not the actual USB device
+  class code (`system_profiler` doesn't expose that) — a device with a
+  misleading name could be misclassified.
+- **Process path resolution occasionally returns just the binary name**
+  instead of a full path (depends on how `ps -o comm=` resolves a given
+  process), which means the suspicious-path rule can't evaluate it —
+  observed live with `nc` during the demo run above.
+- **No firewall-level blocking.** Terminating the offending process is
+  the only network remediation — actually blocking future connections
+  at the network layer would require `pfctl` rules and root privileges,
+  which a normal login-session LaunchAgent doesn't have. Out of scope for
+  this build.
+- **Polling, not event-driven.** A connection or device that appears and
+  disappears entirely between two poll ticks (5s / 3s) would be missed.
 
 ## Future improvements
 
-- Adaptive/contextual thresholds instead of static constants
-- Server-side incident aggregation across multiple installs/users
-- A signed, versioned rule-update mechanism (ship new detection rules
-  without a full extension update)
-- Session-persisted tab context (`chrome.storage.session`) so a service-
-  worker restart doesn't reset detection memory
-- Real integration tests for the Express server
-- An options page for per-rule weight tuning (currently requires editing
-  `shared/constants.js` directly — intentionally, to keep the MVP simple)
+- File-system integrity monitoring (LaunchAgents/LaunchDaemons, login
+  items) — the other major intrusion-detection signal category not yet
+  built
+- Event-driven USB monitoring (IOKit notifications) instead of polling
+- A signed allowlist of known-good processes/vendor IDs to reduce
+  false-positive review burden over time
+- `pf` firewall integration for actual network-layer blocking (requires
+  a privileged helper — a real scope increase, not a quick add)
+- Cross-platform support (Linux via `ss`/`netlink`, Windows via
+  `netstat`/WMI) — would need a platform-abstraction layer around the
+  current macOS-specific shell-outs
 
 ## Team split
 
-**Person 1 — Extension core**
-Manifest, background service worker, Chrome APIs (`webNavigation`,
-`declarativeNetRequest`, `storage`, `tabs`), the block/warn/allow
-enforcement workflow.
+**Person 1 — Agent core & OS integration**
+`monitors/network-monitor.ts`, `monitors/usb-monitor.ts`,
+`monitors/process-info.ts`, the LaunchAgent install/uninstall scripts.
 
-**Person 2 — Detection**
-Page instrumentation (`page-monitor.js`, `content-script.js`), the risk
-engine (`risk/rules.js`, `risk/engine.js`), the demo attack pages, and
-the risk-engine test suite.
+**Person 2 — Detection & remediation**
+`risk/rules.ts`, `risk/engine.ts`, `remediation/actions.ts` (and its
+safety gating), the risk-engine test suite, the demo script.
 
-**Person 3 — UI + backend + presentation**
-Popup, dashboard, the Express explanation API, visual polish, and demo/
-pitch preparation.
+**Person 3 — Dashboard, backend API & presentation**
+`server/app.ts`, `server/ai-explanation.ts`, `dashboard/dashboard.ts`,
+visual polish, demo/pitch preparation.
