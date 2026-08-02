@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 48">
+  <title>Overseer eye</title>
+  <path fill="#ff4b2f" d="M32 3C16.2 3 4.6 12.6 1.5 24 4.6 35.4 16.2 45 32 45s27.4-9.6 30.5-21C59.4 12.6 47.8 3 32 3Z"/>
+  <ellipse cx="32" cy="24" rx="4.7" ry="11.8" fill="#08090d"/>
+</svg>

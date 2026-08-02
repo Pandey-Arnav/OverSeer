@@ -368,10 +368,10 @@ const REFRESH_INTERVAL_MS = 5000;
       const response = await fetch("/api/aegis/health");
       const health = await response.json();
       const online = response.ok && health.status === "ok";
-      aegisStatus.textContent = online ? "Online · ready" : "Offline · Sentinel active";
+      aegisStatus.textContent = online ? "Online · ready" : "Offline · Overseer active";
       aegisIndicator.className = `pulse-dot ${online ? "online" : "offline"}`;
     } catch {
-      aegisStatus.textContent = "Offline · Sentinel active";
+      aegisStatus.textContent = "Offline · Overseer active";
       aegisIndicator.className = "pulse-dot offline";
     }
   }
