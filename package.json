@@ -1,0 +1,10 @@
+{
+  "name": "overseer-browser-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": { "build": "vite build", "start": "npm run build && electron .", "dev": "vite build --watch", "test": "node --test src/**/*.test.js", "check": "npm test && npm run build" },
+  "dependencies": { "@vitejs/plugin-react": "latest", "electron": "latest", "react": "latest", "react-dom": "latest", "vite": "latest" },
+  "devDependencies": {}
+}
