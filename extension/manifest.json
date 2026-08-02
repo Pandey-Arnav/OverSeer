@@ -40,6 +40,11 @@
       "world": "ISOLATED"
     }
   ],
-  "permissions": ["storage", "webNavigation", "tabs", "declarativeNetRequest"],
+  "permissions": [
+    "storage",
+    "webNavigation",
+    "tabs",
+    "declarativeNetRequest"
+  ],
   "host_permissions": ["http://*/*", "https://*/*"]
 }
