@@ -9,8 +9,9 @@
  * focused. usb-monitor.ts will still separately log the same device
  * attachment as a normal usb_hid_device incident on its own next tick.
  */
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
+import path from "node:path";
 import { getSettings } from "../storage/store.ts";
 import { listUsbDevices, type UsbDevice } from "../monitors/usb-monitor.ts";
 import { SERVER_PORT } from "../shared/constants.ts";
@@ -19,15 +20,58 @@ const execFileAsync = promisify(execFile);
 
 const CHROME_BINARY = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 
+function spawnDetached(command: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { detached: true, stdio: "ignore", windowsHide: false });
+    child.once("error", reject);
+    child.once("spawn", () => {
+      child.unref();
+      resolve();
+    });
+  });
+}
+
+export function windowsEdgeCandidates(environment: NodeJS.ProcessEnv): string[] {
+  const candidates = [
+    environment["ProgramFiles(x86)"] ? path.join(environment["ProgramFiles(x86)"], "Microsoft", "Edge", "Application", "msedge.exe") : null,
+    environment["ProgramFiles"] ? path.join(environment["ProgramFiles"], "Microsoft", "Edge", "Application", "msedge.exe") : null,
+    environment["LOCALAPPDATA"] ? path.join(environment["LOCALAPPDATA"], "Microsoft", "Edge", "Application", "msedge.exe") : null,
+    "msedge.exe",
+  ];
+  return [...new Set(candidates.filter((candidate): candidate is string => Boolean(candidate)))];
+}
+
+async function launchWindowsHoneypot(url: string): Promise<void> {
+  for (const edge of windowsEdgeCandidates(process.env)) {
+    try {
+      await spawnDetached(edge, ["--new-window", `--app=${url}`]);
+      return;
+    } catch {
+      // Try the next standard Edge location before using the default browser.
+    }
+  }
+  await execFileAsync("rundll32.exe", ["url.dll,FileProtocolHandler", url], { windowsHide: true });
+}
+
 async function launchHoneypotWindow(): Promise<void> {
   const url = `http://localhost:${SERVER_PORT}/honeypot.html`;
+  if (process.platform === "win32") {
+    try {
+      await launchWindowsHoneypot(url);
+    } catch (err) {
+      console.error("[Sentinel] failed to launch Windows honeypot window:", (err as Error).message);
+    }
+    return;
+  }
+
   try {
     // A dedicated --app= window has no browser chrome (no address bar/tabs
     // to click out of) and, launched fresh, takes keyboard focus.
     await execFileAsync(CHROME_BINARY, ["--new-window", `--app=${url}`]);
   } catch {
     try {
-      await execFileAsync("open", [url]);
+      if (process.platform === "darwin") await execFileAsync("open", [url]);
+      else await execFileAsync("xdg-open", [url]);
     } catch (err) {
       console.error("[Sentinel] failed to launch honeypot window:", (err as Error).message);
     }
