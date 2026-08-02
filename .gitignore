@@ -1,0 +1,17 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+*.db
+node_modules/
+dist/
+.DS_Store
+*.log
+logs/
+agent/public/dashboard.js
+agent/public/dashboard.js.map
+agent/public/honeypot.js
+agent/public/honeypot.js.map
+server/.data/
+server/aegis/.jac/
