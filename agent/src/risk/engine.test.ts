@@ -203,6 +203,31 @@ test("each USB category maps to its own rule and weight", () => {
   assert.ok(net.score > other.score);
 });
 
+test("a Microsoft Defender USB threat is high risk", () => {
+  const result = evaluateRisk({
+    category: "usb_storage_device",
+    timestamp: Date.now(),
+    deviceName: "Test USB",
+    defenderScanStatus: "threat_found",
+    defenderThreatCount: 1,
+  });
+  assert.equal(result.score, 100);
+  assert.equal(result.severity, "high");
+  assert.ok(result.reasons.some((reason) => reason.ruleId === "defender-usb-threat"));
+});
+
+test("an unavailable Defender USB scan produces a warning", () => {
+  const result = evaluateRisk({
+    category: "usb_storage_device",
+    timestamp: Date.now(),
+    deviceName: "Unscanned USB",
+    defenderScanStatus: "unavailable",
+    defenderThreatCount: 0,
+  });
+  assert.equal(result.decision, "warn");
+  assert.ok(result.reasons.some((reason) => reason.ruleId === "defender-usb-scan-unavailable"));
+});
+
 test("usb_storage_device is blockable (ejectable); usb_hid_device never is, even at high score", () => {
   // A single HID-device event can't reach 70 on its own (+25), so this
   // asserts the decision logic directly rather than via evaluateRisk.
@@ -260,5 +285,6 @@ test("buildIncident produces the documented data model", () => {
   assert.equal(incident.remoteAddress, "203.0.113.5");
   assert.equal(incident.remotePort, 4444);
   assert.equal(incident.explanation, null);
+  assert.equal(incident.aegisReport, null);
   assert.ok(incident.summary.includes("curl"));
 });

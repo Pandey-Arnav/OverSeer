@@ -25,7 +25,13 @@ export async function terminateProcess(pid: number): Promise<{ ok: boolean; mess
 
 export async function ejectUsbDevice(bsdName: string): Promise<{ ok: boolean; message: string }> {
   try {
-    await execFileAsync("diskutil", ["eject", bsdName]);
+    if (process.platform === "win32") {
+      if (!/^[A-Za-z]:$/.test(bsdName)) return { ok: false, message: "Invalid removable-drive identifier." };
+      const script = `$drive = (New-Object -ComObject Shell.Application).NameSpace(17).ParseName('${bsdName}'); if (-not $drive) { throw 'Drive not found' }; $drive.InvokeVerb('Eject')`;
+      await execFileAsync("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true });
+    } else {
+      await execFileAsync("diskutil", ["eject", bsdName]);
+    }
     return { ok: true, message: `Ejected ${bsdName}.` };
   } catch (err) {
     const stderr = String((err as { stderr?: string }).stderr || (err as Error).message);

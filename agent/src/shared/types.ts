@@ -71,6 +71,8 @@ export interface SentinelEvent {
   vendorId?: string;
   productId?: string;
   bsdName?: string | null; // for storage devices, used for eject
+  defenderScanStatus?: "clean" | "threat_found" | "unavailable";
+  defenderThreatCount?: number;
 
   // usb_badusb_keystroke fields — see monitors/keystroke-honeypot.ts
   keystrokeStats?: { meanIntervalMs: number; stdDevMs: number; keyCount: number };
@@ -119,7 +121,41 @@ export interface Incident {
   decision: Decision;
   reasons: RuleFinding[];
   explanation: AIExplanation | null;
+  aegisReport: AegisReport | null;
   remediation: RemediationInfo | null;
+  defenderScanStatus: "clean" | "threat_found" | "unavailable" | null;
+  defenderThreatCount: number | null;
+}
+
+export interface AegisBranch {
+  name: "ALLOW" | "WARN" | "BLOCK" | "CONTAIN";
+  title: string;
+  actionVariant: string;
+  riskScore: number;
+  utilityScore: number;
+  valid: boolean;
+  verdict: string;
+  violations: Array<{ policyId: string; reason: string; severity: string }>;
+}
+
+export interface AegisReport {
+  engine: "AEGIS_FORKGUARD";
+  version: string;
+  runId: string;
+  sourceIncidentId: string;
+  simulated: boolean;
+  decision: {
+    selectedBranch: "ALLOW" | "WARN" | "BLOCK" | "CONTAIN";
+    status: string;
+    confidence: number;
+    summary: string;
+  };
+  branches: AegisBranch[];
+  timeline: Array<{ seq: number; stage: string; details: string; timestamp: string }>;
+  graph: {
+    nodes: Array<{ id: string; kind: string; label: string; selected?: boolean }>;
+    edges: Array<{ from: string; to: string; type: string }>;
+  };
 }
 
 export interface RemediationInfo {

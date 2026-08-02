@@ -1,106 +1,179 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Sentinel Agent</title>
-<link rel="stylesheet" href="dashboard.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <title>GhostShield Command Center</title>
+  <link rel="stylesheet" href="dashboard.css" />
 </head>
 <body>
-  <header class="page-header">
-    <div class="brand">
-      <span class="brand-icon">🛡️</span>
-      <div>
-        <h1>Sentinel Agent</h1>
-        <p id="status-line" class="status-line">Loading…</p>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-lockup">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 28 32" role="img">
+            <path d="M14 1 26 6v9c0 7.7-4.8 13.4-12 16C6.8 28.4 2 22.7 2 15V6L14 1Z" fill="none" stroke="currentColor" stroke-width="2.2"/>
+            <path d="m8.4 15.5 3.5 3.4 7.7-8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </span>
+        <div>
+          <span class="brand-name">GHOSTSHIELD</span>
+          <span class="brand-kicker">SECURITY COMMAND</span>
+        </div>
       </div>
-    </div>
-    <div class="header-actions">
-      <label class="setting-row">
-        <span>Protection</span>
-        <input type="checkbox" id="protection-toggle" />
-      </label>
-      <label class="setting-row">
-        <span>AI explanations</span>
-        <input type="checkbox" id="ai-toggle" />
-      </label>
-      <button id="clear-history" class="danger-button">Clear history</button>
-    </div>
-  </header>
 
-  <section class="summary-cards">
-    <div class="card">
-      <span class="card-value" id="summary-total">0</span>
-      <span class="card-label">Total incidents</span>
-    </div>
-    <div class="card card-blocked">
-      <span class="card-value" id="summary-blocked">0</span>
-      <span class="card-label">Action available</span>
-    </div>
-    <div class="card card-warned">
-      <span class="card-value" id="summary-warned">0</span>
-      <span class="card-label">Warnings</span>
-    </div>
-    <div class="card">
-      <span class="card-value" id="summary-avg-score">0</span>
-      <span class="card-label">Average risk score</span>
-    </div>
-  </section>
+      <nav class="side-nav" aria-label="Command center sections">
+        <a class="nav-item active" href="#overview"><span class="nav-dot"></span>Overview</a>
+        <a class="nav-item" href="#incidents"><span class="nav-dot"></span>Incidents</a>
+        <a class="nav-item" href="#aegis"><span class="nav-dot"></span>AEGIS ForkGuard</a>
+      </nav>
 
-  <section class="filters">
-    <label>
-      Category
-      <select id="filter-category">
-        <option value="">All</option>
-        <option value="network_connection">Network connection</option>
-        <option value="usb_storage_device">USB storage</option>
-        <option value="usb_hid_device">USB keyboard/mouse</option>
-        <option value="usb_network_device">USB network adapter</option>
-        <option value="usb_other_device">USB other</option>
-      </select>
-    </label>
-    <label>
-      Severity
-      <select id="filter-severity">
-        <option value="">All</option>
-        <option value="low">Low</option>
-        <option value="medium">Medium</option>
-        <option value="high">High</option>
-      </select>
-    </label>
-    <label>
-      Decision
-      <select id="filter-decision">
-        <option value="">All</option>
-        <option value="allow">Allowed</option>
-        <option value="warn">Warned</option>
-        <option value="blocked">Action available</option>
-        <option value="detected_not_blocked">Detected (no safe action)</option>
-      </select>
-    </label>
-    <label class="filter-search">
-      Search
-      <input type="text" id="filter-search" placeholder="process, IP, device name…" />
-    </label>
-  </section>
+      <div class="sidebar-spacer"></div>
 
-  <table class="incident-table">
-    <thead>
-      <tr>
-        <th>Time</th>
-        <th>Category</th>
-        <th>Summary</th>
-        <th>Score</th>
-        <th>Decision</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody id="incident-rows"></tbody>
-  </table>
-  <p id="empty-state" class="empty-state" hidden>No incidents match the current filters.</p>
+      <section id="aegis" class="engine-card">
+        <div class="engine-heading">
+          <span class="pulse-dot" id="aegis-indicator"></span>
+          <span>AEGIS ENGINE</span>
+        </div>
+        <strong id="aegis-status">Checking runtime…</strong>
+        <p>Jac counterfactual policy analysis on port 8012.</p>
+      </section>
+
+      <div class="sidebar-foot">
+        <span>LOCAL-FIRST DEFENSE</span>
+        <span>v0.1.0</span>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">SYSTEM / COMMAND CENTER</p>
+          <h1>Protection overview</h1>
+          <p id="status-line" class="status-line">Loading protection status…</p>
+        </div>
+        <div class="header-actions">
+          <label class="setting-row">
+            <span>Protection</span>
+            <input type="checkbox" id="protection-toggle" />
+          </label>
+          <label class="setting-row">
+            <span>AI explanations</span>
+            <input type="checkbox" id="ai-toggle" />
+          </label>
+          <button id="clear-history" class="danger-button">Clear history</button>
+        </div>
+      </header>
+
+      <section id="overview" class="summary-cards" aria-label="Incident summary">
+        <article class="card card-primary">
+          <span class="card-index">01</span>
+          <span class="card-label">Total incidents</span>
+          <span class="card-value" id="summary-total">0</span>
+          <span class="card-caption">Recorded locally</span>
+        </article>
+        <article class="card card-blocked">
+          <span class="card-index">02</span>
+          <span class="card-label">Action available</span>
+          <span class="card-value" id="summary-blocked">0</span>
+          <span class="card-caption">Awaiting review</span>
+        </article>
+        <article class="card card-warned">
+          <span class="card-index">03</span>
+          <span class="card-label">Warnings</span>
+          <span class="card-value" id="summary-warned">0</span>
+          <span class="card-caption">Behavioral signals</span>
+        </article>
+        <article class="card">
+          <span class="card-index">04</span>
+          <span class="card-label">Average risk</span>
+          <span class="card-value" id="summary-avg-score">0</span>
+          <span class="card-caption">Out of 100</span>
+        </article>
+      </section>
+
+      <section class="system-strip">
+        <div>
+          <span class="strip-label">ACTIVE SURFACES</span>
+          <strong>Network behavior · USB hardware · Microsoft Defender</strong>
+        </div>
+        <div class="strip-separator"></div>
+        <div>
+          <span class="strip-label">DECISION LAYER</span>
+          <strong>Sentinel scoring + AEGIS ForkGuard</strong>
+        </div>
+      </section>
+
+      <section class="incident-panel" id="incidents">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">LIVE EVENT STREAM</p>
+            <h2>Security incidents</h2>
+          </div>
+          <span class="live-chip"><span></span>Monitoring</span>
+        </div>
+
+        <div class="filters">
+          <label>
+            Category
+            <select id="filter-category">
+              <option value="">All categories</option>
+              <option value="network_connection">Network connection</option>
+              <option value="usb_storage_device">USB storage</option>
+              <option value="usb_hid_device">USB keyboard/mouse</option>
+              <option value="usb_network_device">USB network adapter</option>
+              <option value="usb_other_device">USB other</option>
+            </select>
+          </label>
+          <label>
+            Severity
+            <select id="filter-severity">
+              <option value="">All severities</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </label>
+          <label>
+            Decision
+            <select id="filter-decision">
+              <option value="">All decisions</option>
+              <option value="allow">Allowed</option>
+              <option value="warn">Warned</option>
+              <option value="blocked">Action available</option>
+              <option value="detected_not_blocked">Detected (no safe action)</option>
+            </select>
+          </label>
+          <label class="filter-search">
+            Search incidents
+            <input type="text" id="filter-search" placeholder="Process, IP, or device…" />
+          </label>
+        </div>
+
+        <div class="table-shell">
+          <table class="incident-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Category</th>
+                <th>Summary</th>
+                <th>Score</th>
+                <th>Decision</th>
+                <th><span class="sr-only">Details</span></th>
+              </tr>
+            </thead>
+            <tbody id="incident-rows"></tbody>
+          </table>
+          <p id="empty-state" class="empty-state" hidden>No incidents match the current filters.</p>
+        </div>
+      </section>
+    </main>
+  </div>
 
   <div id="confirm-overlay" class="confirm-overlay" hidden>
-    <div class="confirm-box">
+    <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="confirm-message">
+      <span class="confirm-icon">!</span>
       <p id="confirm-message">Clear all stored incidents? This cannot be undone.</p>
       <div class="confirm-actions">
         <button id="confirm-yes" class="danger-button">Confirm</button>

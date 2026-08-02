@@ -104,6 +104,26 @@ function newUsbDevice(event: SentinelEvent): RuleFinding | null {
   };
 }
 
+function defenderUsbFinding(event: SentinelEvent): RuleFinding | null {
+  if (event.category !== EVENT_CATEGORIES.USB_STORAGE_DEVICE) return null;
+  if (event.defenderScanStatus === "threat_found") {
+    const count = Math.max(1, event.defenderThreatCount ?? 1);
+    return {
+      ruleId: "defender-usb-threat",
+      label: `Microsoft Defender reported ${count} threat${count === 1 ? "" : "s"} on the newly mounted USB volume`,
+      points: RULE_WEIGHTS.DEFENDER_THREAT_FOUND,
+    };
+  }
+  if (event.defenderScanStatus === "unavailable") {
+    return {
+      ruleId: "defender-usb-scan-unavailable",
+      label: "Microsoft Defender could not complete the USB scan; treat the volume cautiously until it is scanned",
+      points: RULE_WEIGHTS.DEFENDER_SCAN_UNAVAILABLE,
+    };
+  }
+  return null;
+}
+
 // PAYMENT DETECTION: catches the classic banking-trojan / man-in-the-
 // browser pattern where a script silently rewrites a payment field
 // (recipient account, IBAN, wallet address, amount) after the user has
@@ -154,6 +174,7 @@ export const RULES: Rule[] = [
   newListeningPort,
   multipleNewRemoteHosts,
   newUsbDevice,
+  defenderUsbFinding,
   transactionFieldTampering,
   badUsbKeystrokeTiming,
   suspiciousScript,

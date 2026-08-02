@@ -12,10 +12,12 @@ import { runNetworkMonitorTick } from "./monitors/network-monitor.ts";
 import { runUsbMonitorTick } from "./monitors/usb-monitor.ts";
 import { TUNING } from "./shared/constants.ts";
 import { dataDir } from "./storage/store.ts";
+import { startAegisService, stopAegisService } from "./aegis/process.ts";
 
 console.log("Sentinel Agent starting…");
 console.log(`Data directory: ${dataDir()}`);
 
+startAegisService();
 startServer();
 
 async function tick(name: string, fn: () => Promise<{ length: number }>) {
@@ -38,8 +40,10 @@ void tick("USB monitor", runUsbMonitorTick);
 
 process.on("SIGINT", () => {
   console.log("\nSentinel Agent shutting down.");
+  stopAegisService();
   process.exit(0);
 });
 process.on("SIGTERM", () => {
+  stopAegisService();
   process.exit(0);
 });

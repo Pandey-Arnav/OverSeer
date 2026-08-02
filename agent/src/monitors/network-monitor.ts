@@ -153,6 +153,10 @@ async function buildRemediation(process: ProcessInfo | undefined): Promise<Remed
 export async function runNetworkMonitorTick(): Promise<Incident[]> {
   const settings = await getSettings();
   if (!settings.protectionEnabled) return [];
+  // The current network collector is intentionally macOS-specific. Windows
+  // still runs USB/Defender protection without repeatedly trying to launch
+  // the unavailable `lsof` command.
+  if (process.platform !== "darwin") return [];
 
   const connections = await listConnections();
   const newIncidents: Incident[] = [];

@@ -70,6 +70,10 @@ function summarize(event: SentinelEvent): string {
     const stats = event.keystrokeStats;
     return stats ? `Honeypot input: ${stats.keyCount} keys, ~${stats.meanIntervalMs.toFixed(1)}ms apart (σ=${stats.stdDevMs.toFixed(1)}ms)` : "Honeypot keystroke pattern";
   }
+  if (event.category === "usb_storage_device" && event.defenderScanStatus === "threat_found") {
+    const count = Math.max(1, event.defenderThreatCount ?? 1);
+    return `${event.deviceName ?? "USB storage"} — Microsoft Defender detected ${count} threat${count === 1 ? "" : "s"}`;
+  }
   return event.deviceName ?? "USB device";
 }
 
@@ -92,6 +96,9 @@ export function buildIncident(event: SentinelEvent, evaluation: RiskEvaluation, 
     decision: evaluation.decision,
     reasons: evaluation.reasons,
     explanation: null,
+    aegisReport: null,
     remediation,
+    defenderScanStatus: event.defenderScanStatus ?? null,
+    defenderThreatCount: event.defenderThreatCount ?? null,
   };
 }

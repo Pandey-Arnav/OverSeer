@@ -36,6 +36,11 @@ export interface UsbDevice {
   bsdName: string | null;
 }
 
+interface DefenderScanResult {
+  status: "clean" | "threat_found" | "unavailable";
+  threatCount: number;
+}
+
 function classify(node: UsbDeviceNode): EventCategory {
   const name = (node._name || "").toLowerCase();
   if (node.Media && node.Media.length > 0) return "usb_storage_device";
@@ -66,7 +71,7 @@ function flattenDevices(nodes: UsbDeviceNode[] | undefined): UsbDevice[] {
   return devices;
 }
 
-async function listUsbDevices(): Promise<UsbDevice[]> {
+async function listMacUsbDevices(): Promise<UsbDevice[]> {
   try {
     const { stdout } = await execFileAsync("system_profiler", ["SPUSBDataType", "-json"], {
       maxBuffer: 10 * 1024 * 1024,
@@ -76,6 +81,63 @@ async function listUsbDevices(): Promise<UsbDevice[]> {
   } catch (err) {
     console.error("[Sentinel] system_profiler USB scan failed:", (err as Error).message);
     return [];
+  }
+}
+
+async function listWindowsUsbDevices(): Promise<UsbDevice[]> {
+  const query = [
+    "$ErrorActionPreference = 'Stop'",
+    "$items = @(Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=2' | Select-Object DeviceID,VolumeName,VolumeSerialNumber)",
+    "ConvertTo-Json -InputObject $items -Compress",
+  ].join("; ");
+  try {
+    const { stdout } = await execFileAsync("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", query], {
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+    });
+    const parsed = JSON.parse(stdout || "[]") as Array<{ DeviceID?: string; VolumeName?: string; VolumeSerialNumber?: string }>;
+    return parsed
+      .filter((volume) => typeof volume.DeviceID === "string" && /^[A-Za-z]:$/.test(volume.DeviceID))
+      .map((volume) => ({
+        key: volume.VolumeSerialNumber || volume.DeviceID!,
+        name: volume.VolumeName?.trim() || `Removable drive ${volume.DeviceID}`,
+        category: "usb_storage_device" as const,
+        bsdName: volume.DeviceID!,
+      }));
+  } catch (err) {
+    console.error("[GhostShield] Windows USB discovery failed:", (err as Error).message);
+    return [];
+  }
+}
+
+async function listUsbDevices(): Promise<UsbDevice[]> {
+  if (process.platform === "win32") return listWindowsUsbDevices();
+  if (process.platform === "darwin") return listMacUsbDevices();
+  return [];
+}
+
+async function scanWindowsVolume(deviceId: string): Promise<DefenderScanResult> {
+  if (!/^[A-Za-z]:$/.test(deviceId)) return { status: "unavailable", threatCount: 0 };
+  const root = `${deviceId.toUpperCase()}\\`;
+  const scan = [
+    "$ErrorActionPreference = 'Stop'",
+    `Start-MpScan -ScanType CustomScan -ScanPath '${root}'`,
+    "$cutoff = (Get-Date).AddMinutes(-10)",
+    `$matches = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object { $_.InitialDetectionTime -ge $cutoff -and (($_.Resources -join ' ') -like '*${root}*') })`,
+    "[pscustomobject]@{ ThreatCount = $matches.Count } | ConvertTo-Json -Compress",
+  ].join("; ");
+  try {
+    const { stdout } = await execFileAsync("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", scan], {
+      maxBuffer: 1024 * 1024,
+      timeout: 10 * 60 * 1000,
+      windowsHide: true,
+    });
+    const result = JSON.parse(stdout) as { ThreatCount?: number };
+    const threatCount = Number(result.ThreatCount) || 0;
+    return { status: threatCount > 0 ? "threat_found" : "clean", threatCount };
+  } catch (err) {
+    console.warn(`[GhostShield] Microsoft Defender could not scan ${deviceId}: ${(err as Error).message}`);
+    return { status: "unavailable", threatCount: 0 };
   }
 }
 
@@ -104,6 +166,11 @@ export async function runUsbMonitorTick(): Promise<Incident[]> {
   for (const device of devices) {
     if (knownDeviceKeys.has(device.key)) continue;
 
+    const defender =
+      process.platform === "win32" && device.category === "usb_storage_device" && device.bsdName
+        ? await scanWindowsVolume(device.bsdName)
+        : null;
+
     const event: SentinelEvent = {
       category: device.category,
       timestamp: now,
@@ -111,6 +178,8 @@ export async function runUsbMonitorTick(): Promise<Incident[]> {
       vendorId: device.vendorId,
       productId: device.productId,
       bsdName: device.bsdName,
+      defenderScanStatus: defender?.status,
+      defenderThreatCount: defender?.threatCount,
     };
     const evaluation = evaluateRisk(event, {}, true);
     const remediation =
