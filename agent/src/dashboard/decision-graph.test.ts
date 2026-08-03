@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildDecisionGraphSeries, decisionGraphLabel } from "./decision-graph.ts";
+import { buildDecisionGraphSeries, decisionGraphLabel, summarizeDecisionGraph } from "./decision-graph.ts";
 import type { Decision, Incident } from "../shared/types.ts";
 
 function incident(id: string, timestamp: string, score: number, decision: Decision): Incident {
@@ -49,4 +49,20 @@ test("decision graph clamps scores and exposes clear user-facing decision labels
   assert.deepEqual(series.map((point) => point.score), [0, 100]);
   assert.equal(decisionGraphLabel("blocked"), "Action available");
   assert.equal(decisionGraphLabel("detected_not_blocked"), "Detected only");
+});
+
+test("decision graph summary reports risk, escalation, trend, and decision counts", () => {
+  const series = buildDecisionGraphSeries([
+    incident("allow", "2026-08-02T12:01:00.000Z", 20, "allow"),
+    incident("warn", "2026-08-02T12:02:00.000Z", 50, "warn"),
+    incident("blocked", "2026-08-02T12:03:00.000Z", 80, "blocked"),
+  ]);
+
+  assert.deepEqual(summarizeDecisionGraph(series), {
+    averageRisk: 50,
+    peakRisk: 80,
+    escalatedCount: 2,
+    latestDelta: 30,
+    counts: { allow: 1, warn: 1, blocked: 1, detected_not_blocked: 0 },
+  });
 });
