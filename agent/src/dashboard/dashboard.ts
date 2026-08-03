@@ -13,8 +13,10 @@ import type {
   SecurityInsights,
   Settings,
 } from "../shared/types.ts";
+import { buildDecisionGraphSeries, decisionGraphLabel } from "./decision-graph.ts";
 
 const REFRESH_INTERVAL_MS = 5000;
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 (function () {
   function requireEl<T extends Element>(id: string): T {
@@ -30,6 +32,13 @@ const REFRESH_INTERVAL_MS = 5000;
   const clearHistoryBtn = requireEl<HTMLButtonElement>("clear-history");
   const aegisStatus = requireEl<HTMLElement>("aegis-status");
   const aegisIndicator = requireEl<HTMLElement>("aegis-indicator");
+  const decisionGraph = requireEl<SVGSVGElement>("decision-graph");
+  const decisionGraphEmpty = requireEl<HTMLElement>("decision-graph-empty");
+  const decisionGraphCount = requireEl<HTMLElement>("decision-graph-count");
+  const decisionGraphCurrent = requireEl<HTMLElement>("decision-graph-current");
+  const decisionGraphRisk = requireEl<HTMLElement>("decision-graph-risk");
+  const decisionGraphTime = requireEl<HTMLElement>("decision-graph-time");
+  const decisionGraphLatest = requireEl<HTMLElement>("decision-graph-latest");
 
   const filterCategory = requireEl<HTMLSelectElement>("filter-category");
   const filterSeverity = requireEl<HTMLSelectElement>("filter-severity");
@@ -77,6 +86,18 @@ const REFRESH_INTERVAL_MS = 5000;
     });
   }
 
+  function createSvgElement(tag: string, attributes: Record<string, string | number>): SVGElement {
+    const element = document.createElementNS(SVG_NAMESPACE, tag);
+    for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, String(value));
+    return element;
+  }
+
+  function appendSvgText(text: string, attributes: Record<string, string | number>): void {
+    const label = createSvgElement("text", attributes);
+    label.textContent = text;
+    decisionGraph.appendChild(label);
+  }
+
   function applyFilters(incidents: Incident[]): Incident[] {
     const category = filterCategory.value;
     const severity = filterSeverity.value;
@@ -115,6 +136,132 @@ const REFRESH_INTERVAL_MS = 5000;
     honeypotToggle.checked = settings.honeypotArmed === true;
     statusLine.textContent = enabled ? "Protection active — monitoring network connections and USB devices." : "Protection paused — nothing is being monitored.";
     statusLine.className = `status-line ${enabled ? "enabled" : "disabled"}`;
+  }
+
+  function renderDecisionGraph(): void {
+    const points = buildDecisionGraphSeries(allIncidents);
+    const width = 960;
+    const height = 250;
+    const left = 52;
+    const right = 22;
+    const top = 16;
+    const bottom = 35;
+    const plotWidth = width - left - right;
+    const plotHeight = height - top - bottom;
+    const scoreY = (score: number): number => top + ((100 - score) / 100) * plotHeight;
+    const pointX = (index: number): number =>
+      points.length === 1 ? left + plotWidth / 2 : left + (index / (points.length - 1)) * plotWidth;
+
+    decisionGraph.replaceChildren();
+    decisionGraphEmpty.hidden = points.length !== 0;
+    decisionGraphCount.textContent = `${points.length} decision${points.length === 1 ? "" : "s"} plotted`;
+
+    const zones = [
+      { high: 100, low: 70, fill: "#ef3038", opacity: 0.055, label: "HIGH · 70+" },
+      { high: 70, low: 40, fill: "#f4c84b", opacity: 0.04, label: "WARN · 40–69" },
+      { high: 40, low: 0, fill: "#4bd59b", opacity: 0.025, label: "LOW · 0–39" },
+    ];
+    for (const zone of zones) {
+      decisionGraph.appendChild(createSvgElement("rect", {
+        x: left,
+        y: scoreY(zone.high),
+        width: plotWidth,
+        height: scoreY(zone.low) - scoreY(zone.high),
+        fill: zone.fill,
+        opacity: zone.opacity,
+      }));
+      appendSvgText(zone.label, {
+        x: width - right - 7,
+        y: (scoreY(zone.high) + scoreY(zone.low)) / 2 + 3,
+        class: "decision-zone-label",
+        "text-anchor": "end",
+      });
+    }
+
+    for (const score of [100, 70, 40, 0]) {
+      const y = scoreY(score);
+      decisionGraph.appendChild(createSvgElement("line", {
+        x1: left,
+        y1: y,
+        x2: width - right,
+        y2: y,
+        class: `decision-grid-line${score === 70 || score === 40 ? " threshold" : ""}`,
+      }));
+      appendSvgText(String(score), { x: left - 12, y: y + 3, class: "decision-axis-label", "text-anchor": "end" });
+    }
+
+    if (points.length === 0) {
+      decisionGraph.setAttribute("aria-label", "Live decision graph awaiting security events");
+      decisionGraphCurrent.className = "decision-current-value";
+      decisionGraphCurrent.textContent = "Awaiting data";
+      decisionGraphRisk.textContent = "0 / 100";
+      decisionGraphTime.textContent = "—";
+      decisionGraphLatest.textContent = "New incident decisions will appear here automatically.";
+      return;
+    }
+
+    const coordinates = points.map((point, index) => ({ x: pointX(index), y: scoreY(point.score), point }));
+    if (coordinates.length > 1) {
+      const linePath = coordinates.map(({ x, y }, index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+      const areaPath = `${linePath} L${coordinates.at(-1)!.x.toFixed(1)} ${scoreY(0).toFixed(1)} L${coordinates[0]!.x.toFixed(1)} ${scoreY(0).toFixed(1)} Z`;
+      decisionGraph.appendChild(createSvgElement("path", { d: areaPath, class: "decision-area" }));
+      decisionGraph.appendChild(createSvgElement("path", { d: linePath, class: "decision-line" }));
+    }
+
+    const decisionColors: Record<Decision, string> = {
+      allow: "#4bd59b",
+      warn: "#f4c84b",
+      blocked: "#ef3038",
+      detected_not_blocked: "#d7a6aa",
+    };
+    for (const [index, coordinate] of coordinates.entries()) {
+      const isLatest = index === coordinates.length - 1;
+      if (isLatest) {
+        decisionGraph.appendChild(createSvgElement("circle", {
+          cx: coordinate.x,
+          cy: coordinate.y,
+          r: 10,
+          class: "decision-latest-ring",
+          stroke: decisionColors[coordinate.point.decision],
+        }));
+      }
+      const marker = createSvgElement("circle", {
+        cx: coordinate.x,
+        cy: coordinate.y,
+        r: isLatest ? 6 : 4.5,
+        fill: decisionColors[coordinate.point.decision],
+        class: `decision-point decision-${coordinate.point.decision}`,
+        tabindex: 0,
+        role: "button",
+        "aria-label": `${decisionGraphLabel(coordinate.point.decision)}, risk ${coordinate.point.score}: ${coordinate.point.summary}`,
+      });
+      const title = createSvgElement("title", {});
+      title.textContent = `${formatTime(coordinate.point.timestamp)} · ${decisionGraphLabel(coordinate.point.decision)} · risk ${coordinate.point.score}\n${coordinate.point.summary}`;
+      marker.appendChild(title);
+      marker.addEventListener("click", () => openIncident(coordinate.point.id));
+      marker.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") openIncident(coordinate.point.id);
+      });
+      decisionGraph.appendChild(marker);
+    }
+
+    const first = points[0]!;
+    const latest = points.at(-1)!;
+    const timeLabel = (timestamp: string): string => new Date(timestamp).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    appendSvgText(timeLabel(first.timestamp), { x: pointX(0), y: height - 11, class: "decision-axis-label", "text-anchor": points.length === 1 ? "middle" : "start" });
+    if (points.length > 1) {
+      appendSvgText(timeLabel(latest.timestamp), { x: pointX(points.length - 1), y: height - 11, class: "decision-axis-label", "text-anchor": "end" });
+    }
+
+    decisionGraph.setAttribute(
+      "aria-label",
+      `Live graph of ${points.length} decisions. Latest: ${decisionGraphLabel(latest.decision)}, risk ${latest.score}.`,
+    );
+    decisionGraphCurrent.className = `decision-current-value decision-${latest.decision}`;
+    decisionGraphCurrent.textContent = decisionGraphLabel(latest.decision);
+    decisionGraphRisk.textContent = `${latest.score} / 100`;
+    decisionGraphTime.textContent = formatTime(latest.timestamp);
+    decisionGraphLatest.textContent = latest.summary;
   }
 
   function openIncident(incidentId: string): void {
@@ -561,6 +708,7 @@ const REFRESH_INTERVAL_MS = 5000;
   function render(): void {
     const filtered = applyFilters(allIncidents);
     renderSummary();
+    renderDecisionGraph();
     renderAlerts();
     renderTimeline();
     renderCorrelations();
