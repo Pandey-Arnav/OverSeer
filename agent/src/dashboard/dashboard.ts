@@ -13,7 +13,7 @@ import type {
   SecurityInsights,
   Settings,
 } from "../shared/types.ts";
-import { buildDecisionGraphSeries, decisionGraphLabel } from "./decision-graph.ts";
+import { buildDecisionGraphSeries, decisionGraphLabel, summarizeDecisionGraph } from "./decision-graph.ts";
 
 const REFRESH_INTERVAL_MS = 5000;
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
@@ -37,8 +37,24 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
   const decisionGraphCount = requireEl<HTMLElement>("decision-graph-count");
   const decisionGraphCurrent = requireEl<HTMLElement>("decision-graph-current");
   const decisionGraphRisk = requireEl<HTMLElement>("decision-graph-risk");
+  const decisionGraphSeverity = requireEl<HTMLElement>("decision-graph-severity");
+  const decisionGraphCategory = requireEl<HTMLElement>("decision-graph-category");
   const decisionGraphTime = requireEl<HTMLElement>("decision-graph-time");
   const decisionGraphLatest = requireEl<HTMLElement>("decision-graph-latest");
+  const decisionGraphReview = requireEl<HTMLButtonElement>("decision-graph-review");
+  const decisionGraphTooltip = requireEl<HTMLElement>("decision-graph-tooltip");
+  const decisionTooltipDecision = requireEl<HTMLElement>("decision-tooltip-decision");
+  const decisionTooltipRisk = requireEl<HTMLElement>("decision-tooltip-risk");
+  const decisionTooltipMeta = requireEl<HTMLElement>("decision-tooltip-meta");
+  const decisionTooltipSummary = requireEl<HTMLElement>("decision-tooltip-summary");
+  const decisionStatAverage = requireEl<HTMLElement>("decision-stat-average");
+  const decisionStatPeak = requireEl<HTMLElement>("decision-stat-peak");
+  const decisionStatEscalated = requireEl<HTMLElement>("decision-stat-escalated");
+  const decisionStatDelta = requireEl<HTMLElement>("decision-stat-delta");
+  const decisionCountAllow = requireEl<HTMLElement>("decision-count-allow");
+  const decisionCountWarn = requireEl<HTMLElement>("decision-count-warn");
+  const decisionCountBlocked = requireEl<HTMLElement>("decision-count-blocked");
+  const decisionCountDetected = requireEl<HTMLElement>("decision-count-detected");
 
   const filterCategory = requireEl<HTMLSelectElement>("filter-category");
   const filterSeverity = requireEl<HTMLSelectElement>("filter-severity");
@@ -67,6 +83,7 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
   let settings: Settings = { protectionEnabled: true, aiExplanationsEnabled: true, honeypotArmed: false };
   let insights: SecurityInsights | null = null;
   let expandedId: string | null = null;
+  let latestDecisionGraphIncidentId: string | null = null;
   let pendingConfirmAction: (() => Promise<void>) | null = null;
 
   function hostnameOrName(incident: Incident): string {
@@ -140,21 +157,36 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
   function renderDecisionGraph(): void {
     const points = buildDecisionGraphSeries(allIncidents);
+    const graphSummary = summarizeDecisionGraph(points);
     const width = 960;
-    const height = 250;
+    const height = 300;
     const left = 52;
     const right = 22;
     const top = 16;
-    const bottom = 35;
+    const bottom = 42;
     const plotWidth = width - left - right;
     const plotHeight = height - top - bottom;
     const scoreY = (score: number): number => top + ((100 - score) / 100) * plotHeight;
     const pointX = (index: number): number =>
       points.length === 1 ? left + plotWidth / 2 : left + (index / (points.length - 1)) * plotWidth;
+    const tokenLabel = (value: string): string => value.replace(/_/g, " ");
 
     decisionGraph.replaceChildren();
+    decisionGraphTooltip.hidden = true;
     decisionGraphEmpty.hidden = points.length !== 0;
-    decisionGraphCount.textContent = `${points.length} decision${points.length === 1 ? "" : "s"} plotted`;
+    decisionGraphCount.textContent =
+      allIncidents.length > points.length
+        ? `Latest ${points.length} of ${allIncidents.length}`
+        : `${points.length} decision${points.length === 1 ? "" : "s"} plotted`;
+    decisionStatAverage.textContent = `${graphSummary.averageRisk} / 100`;
+    decisionStatPeak.textContent = `${graphSummary.peakRisk} / 100`;
+    decisionStatEscalated.textContent = String(graphSummary.escalatedCount);
+    decisionStatDelta.textContent = `${graphSummary.latestDelta > 0 ? "+" : ""}${graphSummary.latestDelta}`;
+    decisionStatDelta.className = graphSummary.latestDelta > 0 ? "trend-up" : graphSummary.latestDelta < 0 ? "trend-down" : "trend-flat";
+    decisionCountAllow.textContent = String(graphSummary.counts.allow);
+    decisionCountWarn.textContent = String(graphSummary.counts.warn);
+    decisionCountBlocked.textContent = String(graphSummary.counts.blocked);
+    decisionCountDetected.textContent = String(graphSummary.counts.detected_not_blocked);
 
     const zones = [
       { high: 100, low: 70, fill: "#ef3038", opacity: 0.055, label: "HIGH · 70+" },
@@ -178,7 +210,7 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
       });
     }
 
-    for (const score of [100, 70, 40, 0]) {
+    for (const score of [100, 80, 70, 60, 40, 20, 0]) {
       const y = scoreY(score);
       decisionGraph.appendChild(createSvgElement("line", {
         x1: left,
@@ -195,12 +227,41 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
       decisionGraphCurrent.className = "decision-current-value";
       decisionGraphCurrent.textContent = "Awaiting data";
       decisionGraphRisk.textContent = "0 / 100";
+      decisionGraphSeverity.textContent = "—";
+      decisionGraphCategory.textContent = "—";
       decisionGraphTime.textContent = "—";
       decisionGraphLatest.textContent = "New incident decisions will appear here automatically.";
+      decisionGraphReview.hidden = true;
+      latestDecisionGraphIncidentId = null;
       return;
     }
 
     const coordinates = points.map((point, index) => ({ x: pointX(index), y: scoreY(point.score), point }));
+    const first = points[0]!;
+    const latest = points.at(-1)!;
+    const spansMultipleDays = new Date(first.timestamp).toDateString() !== new Date(latest.timestamp).toDateString();
+    const timeLabel = (timestamp: string): string =>
+      new Date(timestamp).toLocaleString(undefined, spansMultipleDays
+        ? { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }
+        : { hour: "2-digit", minute: "2-digit" });
+    const tickIndexes = [...new Set([0, 0.25, 0.5, 0.75, 1].map((position) => Math.round((points.length - 1) * position)))];
+    for (const index of tickIndexes) {
+      const x = pointX(index);
+      decisionGraph.appendChild(createSvgElement("line", {
+        x1: x,
+        y1: top,
+        x2: x,
+        y2: scoreY(0),
+        class: "decision-grid-line vertical",
+      }));
+      appendSvgText(timeLabel(points[index]!.timestamp), {
+        x,
+        y: height - 13,
+        class: "decision-axis-label",
+        "text-anchor": index === 0 ? "start" : index === points.length - 1 ? "end" : "middle",
+      });
+    }
+
     if (coordinates.length > 1) {
       const linePath = coordinates.map(({ x, y }, index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
       const areaPath = `${linePath} L${coordinates.at(-1)!.x.toFixed(1)} ${scoreY(0).toFixed(1)} L${coordinates[0]!.x.toFixed(1)} ${scoreY(0).toFixed(1)} Z`;
@@ -214,6 +275,22 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
       blocked: "#ef3038",
       detected_not_blocked: "#d7a6aa",
     };
+    const showPointDetails = (coordinate: (typeof coordinates)[number]): void => {
+      const point = coordinate.point;
+      decisionGraphTooltip.hidden = false;
+      decisionGraphTooltip.style.left = `${(coordinate.x / width) * 100}%`;
+      decisionGraphTooltip.style.top = `${(coordinate.y / height) * 100}%`;
+      decisionGraphTooltip.classList.toggle("tooltip-right", coordinate.x > width * 0.7);
+      decisionTooltipDecision.className = `decision-${point.decision}`;
+      decisionTooltipDecision.textContent = decisionGraphLabel(point.decision);
+      decisionTooltipRisk.textContent = `Risk ${point.score} / 100`;
+      decisionTooltipMeta.textContent = `${formatTime(point.timestamp)} · ${point.severity} · ${tokenLabel(point.category)} · ${point.reasonCount} rule${point.reasonCount === 1 ? "" : "s"}`;
+      decisionTooltipSummary.textContent = point.summary;
+    };
+    const hidePointDetails = (): void => {
+      decisionGraphTooltip.hidden = true;
+    };
+
     for (const [index, coordinate] of coordinates.entries()) {
       const isLatest = index === coordinates.length - 1;
       if (isLatest) {
@@ -236,32 +313,40 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
         "aria-label": `${decisionGraphLabel(coordinate.point.decision)}, risk ${coordinate.point.score}: ${coordinate.point.summary}`,
       });
       const title = createSvgElement("title", {});
-      title.textContent = `${formatTime(coordinate.point.timestamp)} · ${decisionGraphLabel(coordinate.point.decision)} · risk ${coordinate.point.score}\n${coordinate.point.summary}`;
+      title.textContent = `${formatTime(coordinate.point.timestamp)} · ${decisionGraphLabel(coordinate.point.decision)} · risk ${coordinate.point.score} · ${coordinate.point.severity} · ${tokenLabel(coordinate.point.category)}\n${coordinate.point.summary}`;
       marker.appendChild(title);
+      marker.addEventListener("pointerenter", () => showPointDetails(coordinate));
+      marker.addEventListener("pointerleave", hidePointDetails);
+      marker.addEventListener("focus", () => showPointDetails(coordinate));
+      marker.addEventListener("blur", hidePointDetails);
       marker.addEventListener("click", () => openIncident(coordinate.point.id));
       marker.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") openIncident(coordinate.point.id);
       });
       decisionGraph.appendChild(marker);
-    }
-
-    const first = points[0]!;
-    const latest = points.at(-1)!;
-    const timeLabel = (timestamp: string): string => new Date(timestamp).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-    appendSvgText(timeLabel(first.timestamp), { x: pointX(0), y: height - 11, class: "decision-axis-label", "text-anchor": points.length === 1 ? "middle" : "start" });
-    if (points.length > 1) {
-      appendSvgText(timeLabel(latest.timestamp), { x: pointX(points.length - 1), y: height - 11, class: "decision-axis-label", "text-anchor": "end" });
+      if (isLatest || coordinate.point.decision !== "allow") {
+        appendSvgText(String(coordinate.point.score), {
+          x: coordinate.x,
+          y: coordinate.y - 13,
+          class: `decision-score-label decision-${coordinate.point.decision}`,
+          "text-anchor": "middle",
+        });
+      }
     }
 
     decisionGraph.setAttribute(
       "aria-label",
-      `Live graph of ${points.length} decisions. Latest: ${decisionGraphLabel(latest.decision)}, risk ${latest.score}.`,
+      `Live graph of ${points.length} decisions. Average risk ${graphSummary.averageRisk}, peak risk ${graphSummary.peakRisk}. Latest: ${decisionGraphLabel(latest.decision)}, risk ${latest.score}.`,
     );
     decisionGraphCurrent.className = `decision-current-value decision-${latest.decision}`;
     decisionGraphCurrent.textContent = decisionGraphLabel(latest.decision);
     decisionGraphRisk.textContent = `${latest.score} / 100`;
+    decisionGraphSeverity.textContent = latest.severity;
+    decisionGraphCategory.textContent = tokenLabel(latest.category);
     decisionGraphTime.textContent = formatTime(latest.timestamp);
     decisionGraphLatest.textContent = latest.summary;
+    decisionGraphReview.hidden = false;
+    latestDecisionGraphIncidentId = latest.id;
   }
 
   function openIncident(incidentId: string): void {
@@ -760,6 +845,9 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
   [filterCategory, filterSeverity, filterDecision].forEach((el) => el.addEventListener("change", render));
   filterSearch.addEventListener("input", render);
+  decisionGraphReview.addEventListener("click", () => {
+    if (latestDecisionGraphIncidentId) openIncident(latestDecisionGraphIncidentId);
+  });
 
   protectionToggle.addEventListener("change", async () => {
     settings = await (await fetch("/api/settings", {

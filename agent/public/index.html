@@ -123,26 +123,41 @@
             <span class="panel-note" id="decision-graph-count">Last 0 decisions</span>
           </div>
         </div>
+        <div class="decision-stats" aria-label="Decision graph statistics">
+          <article><span>Average risk</span><strong id="decision-stat-average">0</strong></article>
+          <article><span>Peak risk</span><strong id="decision-stat-peak">0</strong></article>
+          <article><span>Escalated</span><strong id="decision-stat-escalated">0</strong></article>
+          <article><span>Latest change</span><strong id="decision-stat-delta">0</strong></article>
+        </div>
         <div class="decision-graph-layout">
           <div class="decision-graph-stage">
-            <svg id="decision-graph" class="decision-graph" viewBox="0 0 960 250" role="img" aria-label="Live decision graph awaiting security events"></svg>
+            <svg id="decision-graph" class="decision-graph" viewBox="0 0 960 300" role="img" aria-label="Live decision graph awaiting security events"></svg>
             <p id="decision-graph-empty" class="decision-graph-empty">Waiting for the first security decision.</p>
+            <div id="decision-graph-tooltip" class="decision-graph-tooltip" role="status" hidden>
+              <span id="decision-tooltip-decision">Decision</span>
+              <strong id="decision-tooltip-risk">Risk 0</strong>
+              <small id="decision-tooltip-meta">Awaiting data</small>
+              <p id="decision-tooltip-summary">No incident selected.</p>
+            </div>
           </div>
           <aside class="decision-current" aria-label="Latest decision">
             <span class="decision-current-label">Latest decision</span>
             <strong id="decision-graph-current" class="decision-current-value">Awaiting data</strong>
             <dl>
               <div><dt>Risk</dt><dd id="decision-graph-risk">0 / 100</dd></div>
+              <div><dt>Severity</dt><dd id="decision-graph-severity">—</dd></div>
+              <div><dt>Category</dt><dd id="decision-graph-category">—</dd></div>
               <div><dt>Observed</dt><dd id="decision-graph-time">—</dd></div>
             </dl>
             <p id="decision-graph-latest">New incident decisions will appear here automatically.</p>
+            <button id="decision-graph-review" class="secondary-button decision-review-button" type="button" hidden>Review incident</button>
           </aside>
         </div>
         <div class="decision-legend" aria-label="Decision graph legend">
-          <span><i class="legend-allow"></i>Allow</span>
-          <span><i class="legend-warn"></i>Warn</span>
-          <span><i class="legend-blocked"></i>Action available</span>
-          <span><i class="legend-detected"></i>Detected only</span>
+          <span><i class="legend-allow"></i>Allow <b id="decision-count-allow">0</b></span>
+          <span><i class="legend-warn"></i>Warn <b id="decision-count-warn">0</b></span>
+          <span><i class="legend-blocked"></i>Action available <b id="decision-count-blocked">0</b></span>
+          <span><i class="legend-detected"></i>Detected only <b id="decision-count-detected">0</b></span>
         </div>
       </section>
 
