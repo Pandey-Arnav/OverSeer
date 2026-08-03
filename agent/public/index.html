@@ -4,7 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="color-scheme" content="dark" />
-  <title>GhostShield Command Center</title>
+  <title>Overseer Command Center</title>
+  <link rel="icon" href="overseer-mark.svg" type="image/svg+xml" />
   <link rel="stylesheet" href="dashboard.css" />
 </head>
 <body>
@@ -12,19 +13,17 @@
     <aside class="sidebar">
       <div class="brand-lockup">
         <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 28 32" role="img">
-            <path d="M14 1 26 6v9c0 7.7-4.8 13.4-12 16C6.8 28.4 2 22.7 2 15V6L14 1Z" fill="none" stroke="currentColor" stroke-width="2.2"/>
-            <path d="m8.4 15.5 3.5 3.4 7.7-8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+          <img src="overseer-mark.svg" alt="" />
         </span>
         <div>
-          <span class="brand-name">GHOSTSHIELD</span>
+          <span class="brand-name">OVERSEER</span>
           <span class="brand-kicker">SECURITY COMMAND</span>
         </div>
       </div>
 
       <nav class="side-nav" aria-label="Command center sections">
         <a class="nav-item active" href="#overview"><span class="nav-dot"></span>Overview</a>
+        <a class="nav-item" href="#decisions"><span class="nav-dot"></span>Decisions</a>
         <a class="nav-item" href="#alerts"><span class="nav-dot"></span>Alerts</a>
         <a class="nav-item" href="#incidents"><span class="nav-dot"></span>Incidents</a>
         <a class="nav-item" href="#correlations"><span class="nav-dot"></span>Correlation</a>
@@ -109,7 +108,56 @@
         <div class="strip-separator"></div>
         <div>
           <span class="strip-label">DECISION LAYER</span>
-          <strong>Sentinel scoring + AEGIS ForkGuard</strong>
+          <strong>Overseer scoring + AEGIS ForkGuard</strong>
+        </div>
+      </section>
+
+      <section class="decision-panel" id="decisions">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">LIVE DECISION STREAM</p>
+            <h2>Decision graph</h2>
+          </div>
+          <div class="decision-heading-meta">
+            <span class="live-chip"><span></span>5s refresh</span>
+            <span class="panel-note" id="decision-graph-count">Last 0 decisions</span>
+          </div>
+        </div>
+        <div class="decision-stats" aria-label="Decision graph statistics">
+          <article><span>Average risk</span><strong id="decision-stat-average">0</strong></article>
+          <article><span>Peak risk</span><strong id="decision-stat-peak">0</strong></article>
+          <article><span>Escalated</span><strong id="decision-stat-escalated">0</strong></article>
+          <article><span>Latest change</span><strong id="decision-stat-delta">0</strong></article>
+        </div>
+        <div class="decision-graph-layout">
+          <div class="decision-graph-stage">
+            <svg id="decision-graph" class="decision-graph" viewBox="0 0 960 300" role="img" aria-label="Live decision graph awaiting security events"></svg>
+            <p id="decision-graph-empty" class="decision-graph-empty">Waiting for the first security decision.</p>
+            <div id="decision-graph-tooltip" class="decision-graph-tooltip" role="status" hidden>
+              <span id="decision-tooltip-decision">Decision</span>
+              <strong id="decision-tooltip-risk">Risk 0</strong>
+              <small id="decision-tooltip-meta">Awaiting data</small>
+              <p id="decision-tooltip-summary">No incident selected.</p>
+            </div>
+          </div>
+          <aside class="decision-current" aria-label="Latest decision">
+            <span class="decision-current-label">Latest decision</span>
+            <strong id="decision-graph-current" class="decision-current-value">Awaiting data</strong>
+            <dl>
+              <div><dt>Risk</dt><dd id="decision-graph-risk">0 / 100</dd></div>
+              <div><dt>Severity</dt><dd id="decision-graph-severity">—</dd></div>
+              <div><dt>Category</dt><dd id="decision-graph-category">—</dd></div>
+              <div><dt>Observed</dt><dd id="decision-graph-time">—</dd></div>
+            </dl>
+            <p id="decision-graph-latest">New incident decisions will appear here automatically.</p>
+            <button id="decision-graph-review" class="secondary-button decision-review-button" type="button" hidden>Review incident</button>
+          </aside>
+        </div>
+        <div class="decision-legend" aria-label="Decision graph legend">
+          <span><i class="legend-allow"></i>Allow <b id="decision-count-allow">0</b></span>
+          <span><i class="legend-warn"></i>Warn <b id="decision-count-warn">0</b></span>
+          <span><i class="legend-blocked"></i>Action available <b id="decision-count-blocked">0</b></span>
+          <span><i class="legend-detected"></i>Detected only <b id="decision-count-detected">0</b></span>
         </div>
       </section>
 
@@ -135,7 +183,7 @@
             <span class="live-chip"><span></span>Live</span>
           </div>
           <div id="timeline-list" class="timeline-list"></div>
-          <p id="timeline-empty" class="empty-state compact-empty">The timeline will populate when GhostShield records an event.</p>
+          <p id="timeline-empty" class="empty-state compact-empty">The timeline will populate when Overseer records an event.</p>
         </article>
       </section>
 
