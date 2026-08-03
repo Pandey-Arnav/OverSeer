@@ -23,6 +23,7 @@
 
       <nav class="side-nav" aria-label="Command center sections">
         <a class="nav-item active" href="#overview"><span class="nav-dot"></span>Overview</a>
+        <a class="nav-item" href="#decisions"><span class="nav-dot"></span>Decisions</a>
         <a class="nav-item" href="#alerts"><span class="nav-dot"></span>Alerts</a>
         <a class="nav-item" href="#incidents"><span class="nav-dot"></span>Incidents</a>
         <a class="nav-item" href="#correlations"><span class="nav-dot"></span>Correlation</a>
@@ -108,6 +109,40 @@
         <div>
           <span class="strip-label">DECISION LAYER</span>
           <strong>Overseer scoring + AEGIS ForkGuard</strong>
+        </div>
+      </section>
+
+      <section class="decision-panel" id="decisions">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">LIVE DECISION STREAM</p>
+            <h2>Decision graph</h2>
+          </div>
+          <div class="decision-heading-meta">
+            <span class="live-chip"><span></span>5s refresh</span>
+            <span class="panel-note" id="decision-graph-count">Last 0 decisions</span>
+          </div>
+        </div>
+        <div class="decision-graph-layout">
+          <div class="decision-graph-stage">
+            <svg id="decision-graph" class="decision-graph" viewBox="0 0 960 250" role="img" aria-label="Live decision graph awaiting security events"></svg>
+            <p id="decision-graph-empty" class="decision-graph-empty">Waiting for the first security decision.</p>
+          </div>
+          <aside class="decision-current" aria-label="Latest decision">
+            <span class="decision-current-label">Latest decision</span>
+            <strong id="decision-graph-current" class="decision-current-value">Awaiting data</strong>
+            <dl>
+              <div><dt>Risk</dt><dd id="decision-graph-risk">0 / 100</dd></div>
+              <div><dt>Observed</dt><dd id="decision-graph-time">—</dd></div>
+            </dl>
+            <p id="decision-graph-latest">New incident decisions will appear here automatically.</p>
+          </aside>
+        </div>
+        <div class="decision-legend" aria-label="Decision graph legend">
+          <span><i class="legend-allow"></i>Allow</span>
+          <span><i class="legend-warn"></i>Warn</span>
+          <span><i class="legend-blocked"></i>Action available</span>
+          <span><i class="legend-detected"></i>Detected only</span>
         </div>
       </section>
 
