@@ -18,6 +18,23 @@ import { buildDecisionGraphSeries, decisionGraphLabel, summarizeDecisionGraph } 
 const REFRESH_INTERVAL_MS = 5000;
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
+interface BankIncidentHandoff {
+  incidentId: string;
+  timestamp: string;
+  user: string;
+  originalRecipient: string;
+  modifiedRecipient: string;
+  originalAmount: number | string;
+  modifiedAmount: number | string;
+  originalAccount?: string;
+  modifiedAccount?: string;
+  attackType: string;
+  confidence: number;
+  outcome: "Frozen" | "User Override";
+  actionsTaken: string[];
+  timeline?: string[];
+}
+
 (function () {
   function requireEl<T extends Element>(id: string): T {
     const el = document.getElementById(id);
@@ -83,8 +100,118 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
   let settings: Settings = { protectionEnabled: true, aiExplanationsEnabled: true, honeypotArmed: false };
   let insights: SecurityInsights | null = null;
   let expandedId: string | null = null;
+  let bankHandoffOpened = false;
+  let focusBankHandoff = false;
   let latestDecisionGraphIncidentId: string | null = null;
   let pendingConfirmAction: (() => Promise<void>) | null = null;
+
+  function readBankIncidentHandoff(): BankIncidentHandoff | null {
+    const encoded = new URLSearchParams(window.location.search).get("bankIncident");
+    if (!encoded) return null;
+    try {
+      const value = JSON.parse(encoded) as Partial<BankIncidentHandoff>;
+      if (!value.incidentId || !value.timestamp || !value.originalRecipient || !value.modifiedRecipient) return null;
+      const clean = (input: unknown): string => String(input ?? "").replace(/[<>&\u0000-\u001f]/g, "").slice(0, 240);
+      return {
+        incidentId: clean(value.incidentId),
+        timestamp: clean(value.timestamp),
+        user: clean(value.user),
+        originalRecipient: clean(value.originalRecipient),
+        modifiedRecipient: clean(value.modifiedRecipient),
+        originalAmount: clean(value.originalAmount),
+        modifiedAmount: clean(value.modifiedAmount),
+        originalAccount: clean(value.originalAccount),
+        modifiedAccount: clean(value.modifiedAccount),
+        attackType: clean(value.attackType || "DOM Injection"),
+        confidence: Math.min(100, Math.max(0, Number(value.confidence) || 0)),
+        outcome: value.outcome === "User Override" ? "User Override" : "Frozen",
+        actionsTaken: Array.isArray(value.actionsTaken) ? value.actionsTaken.map(clean).slice(0, 12) : [],
+        timeline: Array.isArray(value.timeline) ? value.timeline.map(clean).slice(0, 16) : [],
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function bankIncidentToDashboardIncident(bank: BankIncidentHandoff): Incident {
+    const original = `${bank.originalRecipient} · $${bank.originalAmount}${bank.originalAccount ? ` · account ${bank.originalAccount}` : ""}`;
+    const modified = `${bank.modifiedRecipient} · $${bank.modifiedAmount}${bank.modifiedAccount ? ` · account ${bank.modifiedAccount}` : ""}`;
+    return {
+      id: bank.incidentId,
+      timestamp: bank.timestamp,
+      category: "transaction_tampering",
+      summary: `${bank.attackType}: ${bank.originalRecipient} → ${bank.modifiedRecipient}`,
+      processName: null,
+      processPath: null,
+      remoteAddress: null,
+      remotePort: null,
+      deviceName: "Northstar Bank Demo",
+      pageOrigin: "Northstar Bank Demo",
+      tamperedFieldNames: ["recipient", "amount", "account number"],
+      scriptFindings: [
+        `User: ${bank.user}`,
+        `Confidence: ${bank.confidence}%`,
+        `Original transaction: ${original}`,
+        `Modified transaction: ${modified}`,
+        `Outcome: ${bank.outcome}`,
+        ...bank.actionsTaken,
+      ],
+      honeypotCommand: null,
+      score: 100,
+      severity: "high",
+      decision: bank.outcome === "Frozen" ? "blocked" : "detected_not_blocked",
+      reasons: [
+        { ruleId: "bank-dom-injection", label: `${bank.attackType} detected with ${bank.confidence}% confidence`, points: 100 },
+        { ruleId: "bank-user", label: `User: ${bank.user}`, points: 0 },
+        { ruleId: "bank-original", label: `Original transaction: ${original}`, points: 0 },
+        { ruleId: "bank-modified", label: `Modified transaction: ${modified}`, points: 0 },
+        { ruleId: "bank-outcome", label: `Status: ${bank.outcome} · ${bank.actionsTaken.join(", ")}`, points: 0 },
+        ...(bank.timeline ?? []).map((step, index) => ({ ruleId: `bank-timeline-${index + 1}`, label: `${index + 1}. ${step}`, points: 0 })),
+      ],
+      explanation: null,
+      aegisReport: null,
+      remediation: null,
+      defenderScanStatus: null,
+      defenderThreatCount: null,
+    };
+  }
+
+  function mergeBankHandoff(bank: BankIncidentHandoff, fetchedInsights: SecurityInsights): void {
+    const incident = bankIncidentToDashboardIncident(bank);
+    allIncidents = [incident, ...allIncidents.filter((item) => item.id !== incident.id)];
+    insights = {
+      ...fetchedInsights,
+      liveRiskScore: 100,
+      liveRiskLevel: "critical",
+      activeAlertCount: fetchedInsights.activeAlertCount + 1,
+      alerts: [{
+        incidentId: incident.id,
+        timestamp: incident.timestamp,
+        title: incident.summary,
+        severity: "high",
+        score: incident.score,
+        decision: incident.decision,
+        recommendation: bank.outcome === "Frozen" ? "Transaction frozen and recipient added to the watchlist." : "User overrode the warning; review the completed malicious transfer.",
+      }, ...fetchedInsights.alerts.filter((alert) => alert.incidentId !== incident.id)],
+      correlations: [{
+        id: `bank-${incident.id}`,
+        title: "Northstar transaction manipulation",
+        description: `${bank.attackType} modified recipient and amount during transfer submission. Outcome: ${bank.outcome}.`,
+        signal: "DOM mutation → transaction integrity violation",
+        incidentIds: [incident.id],
+        firstSeen: incident.timestamp,
+        lastSeen: incident.timestamp,
+        score: 100,
+        severity: "high",
+      }, ...fetchedInsights.correlations.filter((item) => !item.incidentIds.includes(incident.id))],
+      mappingsByIncident: { ...fetchedInsights.mappingsByIncident, [incident.id]: [] },
+    };
+    if (!bankHandoffOpened) {
+      expandedId = incident.id;
+      bankHandoffOpened = true;
+      focusBankHandoff = true;
+    }
+  }
 
   function hostnameOrName(incident: Incident): string {
     if (incident.category === "network_connection") {
@@ -390,6 +517,32 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
   function renderTimeline(): void {
     timelineList.innerHTML = "";
+    const bank = readBankIncidentHandoff();
+    if (bank?.timeline?.length) {
+      timelineEmpty.hidden = true;
+      bank.timeline.forEach((step, index) => {
+        const item = document.createElement("button");
+        item.type = "button";
+        item.className = "timeline-item";
+        const marker = document.createElement("span");
+        marker.className = `timeline-marker severity-${bank.outcome === "Frozen" ? "high" : "medium"}`;
+        const copy = document.createElement("span");
+        copy.className = "timeline-copy";
+        const heading = document.createElement("strong");
+        heading.textContent = step;
+        const meta = document.createElement("span");
+        meta.textContent = `Northstar Bank · ${bank.attackType}`;
+        copy.append(heading, meta);
+        const time = document.createElement("time");
+        const stepTime = new Date(Date.parse(bank.timestamp) + index * 1000);
+        time.dateTime = stepTime.toISOString();
+        time.textContent = formatTime(stepTime.toISOString());
+        item.append(marker, copy, time);
+        item.addEventListener("click", () => openIncident(bank.incidentId));
+        timelineList.appendChild(item);
+      });
+      return;
+    }
     const recent = [...allIncidents]
       .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
       .slice(0, 8);
@@ -572,7 +725,18 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
   }
 
   async function requestExplanation(incident: Incident): Promise<AIExplanation> {
-    const response = await fetch(`/api/incidents/${incident.id}/explain`, { method: "POST" });
+    const bank = readBankIncidentHandoff();
+    const isBankHandoff = bank?.incidentId === incident.id;
+    const response = await fetch(isBankHandoff ? "/api/incidents/explain" : `/api/incidents/${incident.id}/explain`, {
+      method: "POST",
+      headers: isBankHandoff ? { "Content-Type": "application/json" } : undefined,
+      body: isBankHandoff ? JSON.stringify({
+        category: incident.category,
+        summary: incident.summary,
+        score: incident.score,
+        reasons: incident.reasons,
+      }) : undefined,
+    });
     if (!response.ok) throw new Error(`server responded ${response.status}`);
     return response.json();
   }
@@ -837,9 +1001,16 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
     ]);
     allIncidents = await incidentsRes.json();
     settings = await settingsRes.json();
-    insights = await insightsRes.json();
+    const fetchedInsights: SecurityInsights = await insightsRes.json();
+    const bankHandoff = readBankIncidentHandoff();
+    insights = fetchedInsights;
+    if (bankHandoff) mergeBankHandoff(bankHandoff, fetchedInsights);
     renderStatus();
     render();
+    if (focusBankHandoff) {
+      requireEl<HTMLElement>("incidents").scrollIntoView({ block: "start" });
+      focusBankHandoff = false;
+    }
     void refreshAegisHealth();
   }
 

@@ -1,5 +1,18 @@
 # GhostShield Sentinel Agent — Local Intrusion Detection
 
+## Full banking demo
+
+Run the Northstar Bank demo and GhostShield Command Center together from the repository root:
+
+```bash
+npm run demo
+```
+
+- Northstar Bank: `http://127.0.0.1:4173/demo-bank/`
+- GhostShield Command Center: `http://127.0.0.1:4100/`
+
+Banking attack incidents are handed directly to the command center in the frontend and open automatically when **Open Command Center** is selected.
+
 A local background daemon that watches real OS-level signals for signs of
 intrusion, scores them with Sentinel's transparent rules, and sends only
 sanitized incident metadata to AEGIS ForkGuard for counterfactual policy
