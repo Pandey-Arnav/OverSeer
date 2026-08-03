@@ -54,7 +54,7 @@
       const lineClass = verdict === "harmful" ? "blocked-line" : verdict === "suspicious" ? "suspicious-line" : "contained-line";
       appendLine(result.reason || "Command contained.", lineClass);
     } catch {
-      appendLine("(connection to sentinel agent lost)", "stderr-line");
+      appendLine("(connection to Overseer agent lost)", "stderr-line");
     }
   });
 
