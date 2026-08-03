@@ -104,6 +104,32 @@ export function createApp() {
     }
   });
 
+  app.post("/api/incidents/explain", async (req, res, next) => {
+    try {
+      const body = req.body as Record<string, unknown>;
+      const summary = typeof body.summary === "string" ? body.summary.slice(0, 1000) : "";
+      const score = typeof body.score === "number" ? Math.min(100, Math.max(0, body.score)) : NaN;
+      const rawReasons = Array.isArray(body.reasons) ? body.reasons.slice(0, 30) : [];
+      const reasons = rawReasons.flatMap((value, index) => {
+        if (!value || typeof value !== "object") return [];
+        const finding = value as Record<string, unknown>;
+        if (typeof finding.label !== "string") return [];
+        return [{
+          ruleId: typeof finding.ruleId === "string" ? finding.ruleId.slice(0, 100) : `frontend-${index + 1}`,
+          label: finding.label.slice(0, 500),
+          points: typeof finding.points === "number" ? Math.min(100, Math.max(0, finding.points)) : 0,
+        }];
+      });
+      if (body.category !== "transaction_tampering" || !summary || !Number.isFinite(score)) {
+        res.status(400).json({ error: "A valid transaction-tampering incident is required" });
+        return;
+      }
+      res.json(await generateExplanation({ category: "transaction_tampering", summary, score, reasons }));
+    } catch (err) {
+      next(err);
+    }
+  });
+
   app.post("/api/incidents/:id/explain", async (req, res, next) => {
     try {
       const incidents = await getIncidents();

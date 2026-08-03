@@ -493,7 +493,18 @@ interface BankIncidentHandoff {
   }
 
   async function requestExplanation(incident: Incident): Promise<AIExplanation> {
-    const response = await fetch(`/api/incidents/${incident.id}/explain`, { method: "POST" });
+    const bank = readBankIncidentHandoff();
+    const isBankHandoff = bank?.incidentId === incident.id;
+    const response = await fetch(isBankHandoff ? "/api/incidents/explain" : `/api/incidents/${incident.id}/explain`, {
+      method: "POST",
+      headers: isBankHandoff ? { "Content-Type": "application/json" } : undefined,
+      body: isBankHandoff ? JSON.stringify({
+        category: incident.category,
+        summary: incident.summary,
+        score: incident.score,
+        reasons: incident.reasons,
+      }) : undefined,
+    });
     if (!response.ok) throw new Error(`server responded ${response.status}`);
     return response.json();
   }
